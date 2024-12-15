@@ -13,8 +13,8 @@ iface = gr.Interface(
         gr.Image(type="numpy", sources=["upload", "webcam"], label="Upload an image or take a picture"),
     ],
     outputs=gr.Textbox(label="Predicted Sign"),
-    title="Sign Language Recognition - Fingerspelling Alphanumerals in SAUDI SL",  # Title of the interface
-    description="This demo is a proof of concept for the fingerspelling recognition system of the SAUDI SL. It uses MediaPipe and DINO in the backend, trained on the SAUDI SL dataset from Mohammad Alghannami and Maram Aljuaid."
+    title="Sign Language Recognition - Video to Caption",  # Title of the interface
+    description="Demo"
 )
 
 example_images = gr.Markdown(
@@ -24,9 +24,9 @@ example_images = gr.Markdown(
     """
 )
 
-example_image1 = gr.Image(value='gradio/A.jpg', type='numpy', label="Example Image of A", width=420, height=280)
-example_image2 = gr.Image(value='gradio/1.jpg', type='numpy', label="Example Image of 1", width=420, height=280)
-example_image3 = gr.Image(value='gradio/2.jpg', type='numpy', label="Example Image of 2", width=420, height=280)
+example_image1 = gr.Image(value='slt-demo/img/A.jpg', label="Example Image of A", width=420, height=280)
+example_image2 = gr.Image(value='slt-demo/img/1.jpg', label="Example Image of 1", width=420, height=280)
+example_image3 = gr.Image(value='slt-demo/img/2.jpg', label="Example Image of 2", width=420, height=280)
 
 # Combine the interface and example images
 app = gr.Blocks()
