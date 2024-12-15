@@ -1,2 +1,2 @@
 # slt-demo
-Sign Language Recognition - Gradio web app for Video to Caption
+**Sign Language Recognition - Gradio web app for Video to Caption**
