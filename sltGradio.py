@@ -1,12 +1,10 @@
 import gradio as gr
 import os
-from backend import dinosaurus
+from backend import process_input
 
 def process_video(input_video_path):
     # Generate a translation in the backend.
-    # Assuming dinosaurus now returns a single string translation
-    translation = dinosaurus(input_video_path)
-    
+    translation = process_input(input_video_path)
     return translation
 
 example_videos = [
