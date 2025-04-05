@@ -8,16 +8,24 @@ from model.modeling_t5 import T5ModelForSLT
 from utils.translation import postprocess_text
 import numpy as np
 from dotenv import load_dotenv
+import cv2
+
+# Import pose extraction functions from predict_pose.py
+from predict_pose import (
+    create_mediapipe_models, 
+    predict_pose, 
+    load_video_cv
+)
 
 os.environ['KMP_DUPLICATE_LIB_OK'] = 'TRUE'
 load_dotenv()
 # set KMP_DUPLICATE_LIB_OK=TRUE
 
-
 # Initialize global variables for model, tokenizer, and config
 model = None
 tokenizer = None
 config = None
+pose_models = None
 
 def load_config(cfg_path='configs/predict_config_demo.yaml'):
     """Load config from a yaml file."""
@@ -38,9 +46,9 @@ def get_sign_input_dim(config):
 
 def initialize_model():
     """Initialize the model and tokenizer."""
-    global model, tokenizer, config
+    global model, tokenizer, config, pose_models
     
-    if model is not None and tokenizer is not None:
+    if model is not None and tokenizer is not None and pose_models is not None:
         return
     
     # Load configuration
@@ -63,24 +71,94 @@ def initialize_model():
     
     tokenizer = T5Tokenizer.from_pretrained(model.config.base_model_name, clean_up_tokenization_spaces=True)
     
+    # Initialize pose models
+    pose_checkpoint_folder = 'checkpoints/pose/'
+    pose_models = create_mediapipe_models(pose_checkpoint_folder)
+    
     # Move model to appropriate device
     device = "cuda" if torch.cuda.is_available() else "cpu"
     model.to(device)
     model.eval()
 
+def flatten_keypoints(keypoints_dict):
+    """
+    Flatten keypoints from all body parts into a single feature vector.
+    
+    Args:
+        keypoints_dict: Dict with pose, hand, and face landmarks
+        
+    Returns:
+        Flattened array of keypoints
+    """
+    flattened = []
+    
+    # Process pose keypoints (33 keypoints × 4 values)
+    if len(keypoints_dict['pose_landmarks']) > 0:
+        pose_kp = np.array(keypoints_dict['pose_landmarks'])
+        flattened.extend(pose_kp.flatten())
+    else:
+        flattened.extend(np.zeros(33 * 4))
+    
+    # Process right hand keypoints (21 keypoints × 4 values)
+    if len(keypoints_dict['right_hand_landmarks']) > 0:
+        right_hand_kp = np.array(keypoints_dict['right_hand_landmarks'])
+        flattened.extend(right_hand_kp.flatten())
+    else:
+        flattened.extend(np.zeros(21 * 4))
+    
+    # Process left hand keypoints (21 keypoints × 4 values)
+    if len(keypoints_dict['left_hand_landmarks']) > 0:
+        left_hand_kp = np.array(keypoints_dict['left_hand_landmarks'])
+        flattened.extend(left_hand_kp.flatten())
+    else:
+        flattened.extend(np.zeros(21 * 4))
+    
+    return np.array(flattened)
+
 def extract_pose_features(video_path):
     """
-    Extract pose features from the input video.
-    This is a placeholder - you'll need to implement the actual feature extraction.
-    """
-    # TODO: Implement actual pose feature extraction from the video
-    # For now, returning dummy data with the correct dimensions
-    pose_dim = config['SignModelArguments']['projectors']['pose']['dim']
-    max_sequence_length = config['EvaluationArguments']['max_sequence_length']
+    Extract pose features from the input video using MediaPipe.
     
-    # Placeholder: random features of the correct shape
-    features = torch.rand(max_sequence_length, pose_dim)
-    attention_mask = torch.ones(max_sequence_length)
+    Args:
+        video_path: Path to the input video file
+        
+    Returns:
+        Tensor of pose features and attention mask
+    """
+    global pose_models
+    
+    # Ensure pose models are initialized
+    if pose_models is None:
+        initialize_model()
+    
+    # Load video frames
+    video_frames, _ = load_video_cv(video_path)
+    
+    # Get pose predictions
+    pose_results = predict_pose(video_frames, pose_models)
+    
+    # Extract keypoints for each frame
+    max_sequence_length = config['EvaluationArguments']['max_sequence_length']
+    pose_dim = config['SignModelArguments']['projectors']['pose']['dim']
+    
+    # Initialize features tensor with zeros
+    features = torch.zeros(max_sequence_length, pose_dim)
+    attention_mask = torch.zeros(max_sequence_length)
+    
+    num_frames = min(len(pose_results['cropped_keypoints']), max_sequence_length)
+    
+    for i in range(num_frames):
+        keypoints = pose_results['cropped_keypoints'][i]
+        flat_keypoints = flatten_keypoints(keypoints)
+        
+        # Ensure the features have the correct dimensions
+        if len(flat_keypoints) > pose_dim:
+            flat_keypoints = flat_keypoints[:pose_dim]
+        elif len(flat_keypoints) < pose_dim:
+            flat_keypoints = np.pad(flat_keypoints, (0, pose_dim - len(flat_keypoints)))
+            
+        features[i] = torch.tensor(flat_keypoints, dtype=torch.float32)
+        attention_mask[i] = 1.0  # Mark this frame as valid
     
     return features, attention_mask
 
