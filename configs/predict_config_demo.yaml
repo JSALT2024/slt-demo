@@ -1,16 +1,16 @@
 ModelArguments:
   base_model_name: google/t5-v1_1-base
   hidden_dropout_prob: 0.1
-  num_beams: 5
+  num_beams: 3
   max_length: 128
-#  top_k: 50
-#  top_p: 0.95
-  temperature: 0.7
-  length_penalty: 0.6
-#  repetition_penalty: 1.0
+  top_k: 50
+  top_p: 0.9
+  temperature: 0.8
+  length_penalty: 0.3
+  repetition_penalty: 1.2
   early_stopping: True
   no_repeat_ngram_size: 3
-  do_sample: False
+  do_sample: True
 
 EvaluationArguments:
   output_dir: ./results

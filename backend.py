@@ -9,6 +9,10 @@ from utils.translation import postprocess_text
 import numpy as np
 from dotenv import load_dotenv
 import cv2
+import matplotlib.pyplot as plt
+from matplotlib.patches import Circle
+import time
+import re
 
 # Import pose extraction functions from predict_pose.py
 from predict_pose import (
@@ -80,6 +84,48 @@ def initialize_model():
     model.to(device)
     model.eval()
 
+def is_valid_sentence(text):
+    """
+    Check if the decoded text appears to be a valid sentence.
+    
+    Args:
+        text: The decoded text to check
+        
+    Returns:
+        bool: True if it looks like a valid sentence
+    """
+    # Remove any odd repetitions that might indicate an issue
+    text = text.strip().lower()
+    
+    # Check for excessive repetition
+    words = text.split()
+    if len(words) < 2:
+        return False
+        
+    # If more than 75% of words are the same, it's probably not valid
+    word_counts = {}
+    for word in words:
+        word_counts[word] = word_counts.get(word, 0) + 1
+        
+    most_common_word_count = max(word_counts.values())
+    if most_common_word_count / len(words) > 0.75:
+        print(f"Text rejected due to excessive repetition: {text}")
+        return False
+        
+    # Check for odd character patterns (like 'ee' repeating)
+    if re.search(r'([a-z])\1{3,}', text):  # Same character repeated 4+ times
+        print(f"Text rejected due to character repetition: {text}")
+        return False
+        
+    # Check if it contains common English words to ensure it's somewhat sensible
+    common_english_words = {'the', 'a', 'an', 'to', 'and', 'is', 'in', 'it', 'you', 'that', 'he', 'was', 'for', 'on', 'are', 'with', 'as', 'his', 'they', 'at', 'be', 'this', 'have', 'from', 'or', 'one', 'had', 'by', 'but', 'not', 'what', 'all', 'were', 'we', 'when', 'your', 'can', 'said', 'there', 'use', 'word', 'how', 'each', 'which', 'she', 'do', 'time', 'if', 'will', 'way', 'about', 'many', 'then', 'them', 'would', 'write', 'like', 'so', 'these', 'her', 'long', 'make', 'thing', 'see', 'him', 'two', 'has', 'look', 'more', 'day', 'could', 'go', 'come', 'did', 'number', 'sound', 'no', 'most', 'people', 'my', 'over', 'know', 'water', 'than', 'call', 'first', 'who', 'may', 'down', 'side', 'been', 'now', 'find'}
+    if not any(word in common_english_words for word in words):
+        print(f"Text rejected due to lack of common words: {text}")
+        return False
+    
+    # If it passes all checks, consider it valid
+    return True
+
 def normalize_keypoints(keypoints, image_width, image_height):
     """
     Normalize keypoints to [-1, 1] range.
@@ -147,6 +193,89 @@ def flatten_keypoints(keypoints_dict, image_width, image_height):
     
     return np.array(flattened)
 
+def visualize_pose_keypoints(video_path, save_path=None):
+    """
+    Visualize pose keypoints from the input video for debugging purposes.
+    
+    Args:
+        video_path: Path to the input video
+        save_path: Path to save visualization (if None, will create based on video name)
+        
+    Returns:
+        Path to saved visualization
+    """
+    global pose_models
+    
+    # Ensure pose models are initialized
+    if pose_models is None:
+        initialize_model()
+    
+    # Load video frames
+    video_frames, _ = load_video_cv(video_path)
+    
+    # Get pose predictions
+    pose_results = predict_pose(video_frames, pose_models)
+    
+    # Create visualization directory if it doesn't exist
+    os.makedirs("visualizations", exist_ok=True)
+    
+    if save_path is None:
+        # Generate unique filename based on video name and timestamp
+        video_name = os.path.basename(video_path).split('.')[0]
+        timestamp = int(time.time())
+        save_path = f"visualizations/{video_name}_{timestamp}.png"
+    
+    # Choose frames to visualize (first, middle, last)
+    num_frames = len(pose_results['cropped_keypoints'])
+    if num_frames == 0:
+        return "No frames detected"
+    
+    frame_indices = [0]
+    if num_frames > 1:
+        frame_indices.append(num_frames // 2)
+    if num_frames > 2:
+        frame_indices.append(num_frames - 1)
+    
+    # Create figure with subplots
+    fig, axes = plt.subplots(len(frame_indices), 2, figsize=(16, 6 * len(frame_indices)))
+    if len(frame_indices) == 1:
+        axes = axes.reshape(1, -1)
+    
+    for i, frame_idx in enumerate(frame_indices):
+        # Original image
+        axes[i, 0].imshow(pose_results['images'][frame_idx])
+        axes[i, 0].set_title(f"Original Frame {frame_idx}")
+        axes[i, 0].axis('off')
+        
+        # Cropped image with keypoints
+        cropped_img = pose_results['cropped_images'][frame_idx]
+        keypoints = pose_results['cropped_keypoints'][frame_idx]
+        
+        axes[i, 1].imshow(cropped_img)
+        axes[i, 1].set_title(f"Cropped Frame {frame_idx} with Keypoints")
+        
+        # Plot keypoints
+        colors = {'pose_landmarks': 'blue', 'left_hand_landmarks': 'green', 'right_hand_landmarks': 'red'}
+        
+        for kp_type, color in colors.items():
+            if len(keypoints[kp_type]) > 0:
+                kp_array = np.array(keypoints[kp_type])
+                x = kp_array[:, 0]
+                y = kp_array[:, 1]
+                visibility = kp_array[:, 3] if kp_array.shape[1] > 3 else np.ones_like(x)
+                
+                for j in range(len(x)):
+                    if visibility[j] > 0.2:  # Only draw visible keypoints
+                        axes[i, 1].add_patch(Circle((x[j], y[j]), radius=3, color=color, alpha=visibility[j]))
+        
+        axes[i, 1].axis('off')
+    
+    plt.tight_layout()
+    plt.savefig(save_path)
+    plt.close()
+    
+    return save_path
+
 def extract_pose_features(video_path):
     """
     Extract pose features from the input video using MediaPipe.
@@ -179,8 +308,14 @@ def extract_pose_features(video_path):
     
     num_frames = min(len(pose_results['cropped_keypoints']), max_sequence_length)
     
+    valid_frames = 0
     for i in range(num_frames):
         keypoints = pose_results['cropped_keypoints'][i]
+        
+        # Check if we have valid keypoints (at least some pose landmarks)
+        if len(keypoints['pose_landmarks']) == 0:
+            continue
+            
         # Get image dimensions for normalization
         cropped_image = pose_results['cropped_images'][i]
         image_height, image_width = cropped_image.shape[:2]
@@ -196,6 +331,9 @@ def extract_pose_features(video_path):
             
         features[i] = torch.tensor(flat_keypoints, dtype=torch.float32)
         attention_mask[i] = 1.0  # Mark this frame as valid
+        valid_frames += 1
+    
+    print(f"Processed {valid_frames} valid frames out of {num_frames} total frames")
     
     return features, attention_mask
 
@@ -213,12 +351,19 @@ def process_input(input_video_path):
         # Initialize model if not already done
         initialize_model()
         
+        # Visualize pose keypoints for debugging
+        vis_path = visualize_pose_keypoints(input_video_path)
+        print(f"Pose keypoints visualization saved to: {vis_path}")
+        
         # Extract pose features from the video
         features, attention_mask = extract_pose_features(input_video_path)
         
         # Check if we have valid frames
-        if attention_mask.sum() == 0:
+        valid_frame_count = attention_mask.sum().item()
+        if valid_frame_count == 0:
             return "No valid pose detected in the video. Please try another video."
+        
+        print(f"Found {valid_frame_count} valid frames with pose data")
         
         # Prepare input batch
         device = next(model.parameters()).device
@@ -230,23 +375,43 @@ def process_input(input_video_path):
             # No labels needed for inference
         }
         
-        # Generate translation
+        # Get generation parameters from config
+        generation_params = {
+            "early_stopping": model.config.early_stopping,
+            "no_repeat_ngram_size": model.config.no_repeat_ngram_size,
+            "max_length": config['EvaluationArguments']['max_token_length'],
+            "num_beams": model.config.num_beams,
+            "bos_token_id": tokenizer.pad_token_id,
+            "length_penalty": model.config.length_penalty,
+            "temperature": model.config.temperature,
+            "do_sample": model.config.do_sample,
+            "top_k": model.config.top_k if hasattr(model.config, "top_k") else None,
+            "top_p": model.config.top_p if hasattr(model.config, "top_p") else None,
+            "repetition_penalty": model.config.repetition_penalty if hasattr(model.config, "repetition_penalty") else None,
+            "output_attentions": True,
+            "return_dict_in_generate": True
+        }
+        
+        # Remove None values
+        generation_params = {k: v for k, v in generation_params.items() if v is not None}
+        
+        print(f"Using generation parameters: {generation_params}")
+        
+        # Try different generation approaches until we get a reasonable result
+        valid_output = False
+        decoded_pred = ""
+        
+        # First try beam search with sampling
+        print("Attempting generation with beam search and sampling...")
         with torch.no_grad():
             outputs = model.generate(
                 **batch,
-                early_stopping=model.config.early_stopping,
-                no_repeat_ngram_size=model.config.no_repeat_ngram_size,
-                max_length=config['EvaluationArguments']['max_token_length'],
-                num_beams=model.config.num_beams,
-                bos_token_id=tokenizer.pad_token_id,
-                length_penalty=model.config.length_penalty,
-                temperature=model.config.temperature,
-                do_sample=model.config.do_sample,
-                output_attentions=True,
-                return_dict_in_generate=True
+                **generation_params
             )
             
             sequences = outputs.sequences
+            print(f"Generated sequences shape: {sequences.shape}")
+            print(f"First sequence tokens: {sequences[0]}")
             
             # Replace invalid tokens with <unk>
             if len(np.where(sequences.cpu().numpy() > len(tokenizer) - 1)[1]) > 0:
@@ -254,17 +419,81 @@ def process_input(input_video_path):
 
             # Decode prediction
             decoded_pred = tokenizer.decode(sequences[0], skip_special_tokens=True)
+            print(f"Raw decoded prediction: '{decoded_pred}'")
             
-            # Post-process the prediction
-            processed_pred, _ = postprocess_text([decoded_pred], [""])
+            # Check if output is valid
+            valid_output = is_valid_sentence(decoded_pred)
             
-            # Additional cleaning for the output
-            result = processed_pred[0].strip()
-            if not result:
-                return "Could not translate the sign language. Please try another video."
+        # If beam search with sampling fails, try greedy search
+        if not valid_output:
+            print("Beam search output invalid, trying greedy search...")
+            with torch.no_grad():
+                outputs = model.generate(
+                    **batch,
+                    max_length=config['EvaluationArguments']['max_token_length'],
+                    num_beams=1,  # Use greedy search
+                    do_sample=False,
+                    top_k=None,
+                    top_p=None,
+                    temperature=1.0,
+                    output_attentions=False,
+                    return_dict_in_generate=True
+                )
+                
+                sequences = outputs.sequences
+                print(f"Greedy search sequences shape: {sequences.shape}")
+                print(f"Greedy search first sequence tokens: {sequences[0]}")
+                
+                if len(np.where(sequences.cpu().numpy() > len(tokenizer) - 1)[1]) > 0:
+                    sequences[sequences > len(tokenizer) - 1] = tokenizer.unk_token_id
+                    
+                decoded_pred = tokenizer.decode(sequences[0], skip_special_tokens=True)
+                print(f"Greedy search decoded: '{decoded_pred}'")
+                
+                valid_output = is_valid_sentence(decoded_pred)
+        
+        # If greedy search fails, try pure beam search without sampling
+        if not valid_output:
+            print("Greedy search output invalid, trying pure beam search...")
+            with torch.no_grad():
+                outputs = model.generate(
+                    **batch,
+                    max_length=config['EvaluationArguments']['max_token_length'],
+                    num_beams=5,  # Use more beams
+                    do_sample=False,  # No sampling
+                    temperature=1.0,
+                    length_penalty=0.6,
+                    output_attentions=False,
+                    return_dict_in_generate=True
+                )
+                
+                sequences = outputs.sequences
+                print(f"Pure beam search sequences shape: {sequences.shape}")
+                print(f"Pure beam search first sequence tokens: {sequences[0]}")
+                
+                if len(np.where(sequences.cpu().numpy() > len(tokenizer) - 1)[1]) > 0:
+                    sequences[sequences > len(tokenizer) - 1] = tokenizer.unk_token_id
+                    
+                decoded_pred = tokenizer.decode(sequences[0], skip_special_tokens=True)
+                print(f"Pure beam search decoded: '{decoded_pred}'")
+                
+                valid_output = is_valid_sentence(decoded_pred)
+                
+        if not valid_output:
+            return "The model detected sign language but couldn't produce a reliable translation."
             
-            return result
+        # Post-process the prediction
+        processed_pred, _ = postprocess_text([decoded_pred], [""])
+        
+        # Additional cleaning for the output
+        result = processed_pred[0].strip()
+        if not result:
+            return "Could not translate the sign language. Please try another video or ensure the signer is clearly visible."
+        
+        return result
             
     except Exception as e:
         print(f"Error processing video: {e}")
+        import traceback
+        traceback.print_exc()
         return f"Error processing video: {str(e)}"
