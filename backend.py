@@ -80,12 +80,38 @@ def initialize_model():
     model.to(device)
     model.eval()
 
-def flatten_keypoints(keypoints_dict):
+def normalize_keypoints(keypoints, image_width, image_height):
     """
-    Flatten keypoints from all body parts into a single feature vector.
+    Normalize keypoints to [-1, 1] range.
+    
+    Args:
+        keypoints: Numpy array of keypoints with shape (..., 2) for x,y coordinates
+        image_width: Width of the image
+        image_height: Height of the image
+        
+    Returns:
+        Normalized keypoints
+    """
+    if len(keypoints) == 0:
+        return keypoints
+        
+    normalized = keypoints.copy()
+    # X coordinates: normalize to [-1, 1]
+    normalized[:, 0] = (normalized[:, 0] / image_width) * 2 - 1
+    # Y coordinates: normalize to [-1, 1]
+    normalized[:, 1] = (normalized[:, 1] / image_height) * 2 - 1
+    
+    return normalized
+
+def flatten_keypoints(keypoints_dict, image_width, image_height):
+    """
+    Flatten keypoints from all body parts into a single feature vector
+    and normalize them.
     
     Args:
         keypoints_dict: Dict with pose, hand, and face landmarks
+        image_width: Width of the image
+        image_height: Height of the image
         
     Returns:
         Flattened array of keypoints
@@ -95,6 +121,8 @@ def flatten_keypoints(keypoints_dict):
     # Process pose keypoints (33 keypoints × 4 values)
     if len(keypoints_dict['pose_landmarks']) > 0:
         pose_kp = np.array(keypoints_dict['pose_landmarks'])
+        # Normalize the x,y coordinates
+        pose_kp[:, :2] = normalize_keypoints(pose_kp[:, :2], image_width, image_height)
         flattened.extend(pose_kp.flatten())
     else:
         flattened.extend(np.zeros(33 * 4))
@@ -102,6 +130,8 @@ def flatten_keypoints(keypoints_dict):
     # Process right hand keypoints (21 keypoints × 4 values)
     if len(keypoints_dict['right_hand_landmarks']) > 0:
         right_hand_kp = np.array(keypoints_dict['right_hand_landmarks'])
+        # Normalize the x,y coordinates
+        right_hand_kp[:, :2] = normalize_keypoints(right_hand_kp[:, :2], image_width, image_height)
         flattened.extend(right_hand_kp.flatten())
     else:
         flattened.extend(np.zeros(21 * 4))
@@ -109,6 +139,8 @@ def flatten_keypoints(keypoints_dict):
     # Process left hand keypoints (21 keypoints × 4 values)
     if len(keypoints_dict['left_hand_landmarks']) > 0:
         left_hand_kp = np.array(keypoints_dict['left_hand_landmarks'])
+        # Normalize the x,y coordinates
+        left_hand_kp[:, :2] = normalize_keypoints(left_hand_kp[:, :2], image_width, image_height)
         flattened.extend(left_hand_kp.flatten())
     else:
         flattened.extend(np.zeros(21 * 4))
@@ -149,7 +181,12 @@ def extract_pose_features(video_path):
     
     for i in range(num_frames):
         keypoints = pose_results['cropped_keypoints'][i]
-        flat_keypoints = flatten_keypoints(keypoints)
+        # Get image dimensions for normalization
+        cropped_image = pose_results['cropped_images'][i]
+        image_height, image_width = cropped_image.shape[:2]
+        
+        # Flatten and normalize keypoints
+        flat_keypoints = flatten_keypoints(keypoints, image_width, image_height)
         
         # Ensure the features have the correct dimensions
         if len(flat_keypoints) > pose_dim:
@@ -172,46 +209,62 @@ def process_input(input_video_path):
     Returns:
         str: The translated text
     """
-    # Initialize model if not already done
-    initialize_model()
-    
-    # Extract pose features from the video
-    features, attention_mask = extract_pose_features(input_video_path)
-    
-    # Prepare input batch
-    device = next(model.parameters()).device
-    model_dtype = next(model.parameters()).dtype
-    
-    batch = {
-        "sign_inputs": features.unsqueeze(0).to(device).to(model_dtype),
-        "attention_mask": attention_mask.unsqueeze(0).to(device).to(model_dtype),
-        # No labels needed for inference
-    }
-    
-    # Generate translation
-    with torch.no_grad():
-        outputs = model.generate(
-            **batch,
-            early_stopping=model.config.early_stopping,
-            no_repeat_ngram_size=model.config.no_repeat_ngram_size,
-            max_length=config['EvaluationArguments']['max_token_length'],
-            num_beams=model.config.num_beams,
-            bos_token_id=tokenizer.pad_token_id,
-            length_penalty=model.config.length_penalty,
-            output_attentions=True,
-            return_dict_in_generate=True
-        )
+    try:
+        # Initialize model if not already done
+        initialize_model()
         
-        sequences = outputs.sequences
+        # Extract pose features from the video
+        features, attention_mask = extract_pose_features(input_video_path)
         
-        # Replace invalid tokens with <unk>
-        if len(np.where(sequences.cpu().numpy() > len(tokenizer) - 1)[1]) > 0:
-            sequences[sequences > len(tokenizer) - 1] = tokenizer.unk_token_id
+        # Check if we have valid frames
+        if attention_mask.sum() == 0:
+            return "No valid pose detected in the video. Please try another video."
+        
+        # Prepare input batch
+        device = next(model.parameters()).device
+        model_dtype = next(model.parameters()).dtype
+        
+        batch = {
+            "sign_inputs": features.unsqueeze(0).to(device).to(model_dtype),
+            "attention_mask": attention_mask.unsqueeze(0).to(device).to(model_dtype),
+            # No labels needed for inference
+        }
+        
+        # Generate translation
+        with torch.no_grad():
+            outputs = model.generate(
+                **batch,
+                early_stopping=model.config.early_stopping,
+                no_repeat_ngram_size=model.config.no_repeat_ngram_size,
+                max_length=config['EvaluationArguments']['max_token_length'],
+                num_beams=model.config.num_beams,
+                bos_token_id=tokenizer.pad_token_id,
+                length_penalty=model.config.length_penalty,
+                temperature=model.config.temperature,
+                do_sample=model.config.do_sample,
+                output_attentions=True,
+                return_dict_in_generate=True
+            )
+            
+            sequences = outputs.sequences
+            
+            # Replace invalid tokens with <unk>
+            if len(np.where(sequences.cpu().numpy() > len(tokenizer) - 1)[1]) > 0:
+                sequences[sequences > len(tokenizer) - 1] = tokenizer.unk_token_id
 
-        # Decode prediction
-        decoded_pred = tokenizer.decode(sequences[0], skip_special_tokens=True)
-        
-        # Post-process the prediction
-        processed_pred, _ = postprocess_text([decoded_pred], [""])
-        
-        return processed_pred[0]
+            # Decode prediction
+            decoded_pred = tokenizer.decode(sequences[0], skip_special_tokens=True)
+            
+            # Post-process the prediction
+            processed_pred, _ = postprocess_text([decoded_pred], [""])
+            
+            # Additional cleaning for the output
+            result = processed_pred[0].strip()
+            if not result:
+                return "Could not translate the sign language. Please try another video."
+            
+            return result
+            
+    except Exception as e:
+        print(f"Error processing video: {e}")
+        return f"Error processing video: {str(e)}"
