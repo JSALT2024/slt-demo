@@ -29,13 +29,16 @@ if not example_videos:
 
 with gr.Blocks(title="Sign Language Translation") as app:
     gr.Markdown("# Sign Language to Text Translation")
-    gr.Markdown("""Upload a sign language video and get a text translation. 
-    The system uses MediaPipe to extract pose features and a T5 model to convert them to text.
+    gr.Markdown("""Upload an ASL video and get a text translation. 
+    The system uses MediaPipe to extract pose features and a T5 model to convert them to English text.
     
     For best results:
     - Ensure the signer is clearly visible and well-lit
     - Position the camera to capture the full upper body
     - Make sure hands and face are clearly visible
+    
+    **Note**: This is a demo system and translations may be inaccurate. The model was trained 
+    on specific ASL datasets, and might not generalize well to all signers or recording conditions.
     """)
     
     with gr.Row():
@@ -45,7 +48,7 @@ with gr.Blocks(title="Sign Language Translation") as app:
             
         with gr.Column(scale=1):
             text_output = gr.Textbox(label="Translation")
-            pose_vis = gr.Image(label="Pose Detection Visualization")
+            pose_vis = gr.Image(label="Pose Detection")
     
     gr.Examples(
         examples=example_videos,

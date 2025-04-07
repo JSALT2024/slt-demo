@@ -147,6 +147,16 @@ def normalize_keypoints(keypoints, image_width, image_height):
     # Y coordinates: normalize to [-1, 1]
     normalized[:, 1] = (normalized[:, 1] / image_height) * 2 - 1
     
+    # Also normalize Z values to a similar range if present
+    if normalized.shape[1] > 2:
+        # Z values are typically already normalized in MediaPipe, but let's ensure they're in a reasonable range
+        # Clip to a range similar to x and y for consistency
+        normalized[:, 2] = np.clip(normalized[:, 2], -1.0, 1.0)
+    
+    # Visibility values should be in [0, 1]
+    if normalized.shape[1] > 3:
+        normalized[:, 3] = np.clip(normalized[:, 3], 0.0, 1.0)
+    
     return normalized
 
 def flatten_keypoints(keypoints_dict, image_width, image_height):
@@ -241,6 +251,10 @@ def visualize_pose_keypoints(video_path, save_path=None):
     if len(frame_indices) == 1:
         axes = axes.reshape(1, -1)
     
+    # Store diagnostic statistics for feature data
+    total_keypoints = {'pose': 0, 'left_hand': 0, 'right_hand': 0}
+    non_zero_features = 0
+    
     for i, frame_idx in enumerate(frame_indices):
         # Original image
         axes[i, 0].imshow(pose_results['images'][frame_idx])
@@ -254,19 +268,33 @@ def visualize_pose_keypoints(video_path, save_path=None):
         axes[i, 1].imshow(cropped_img)
         axes[i, 1].set_title(f"Cropped Frame {frame_idx} with Keypoints")
         
-        # Plot keypoints
-        colors = {'pose_landmarks': 'blue', 'left_hand_landmarks': 'green', 'right_hand_landmarks': 'red'}
-        
-        for kp_type, color in colors.items():
-            if len(keypoints[kp_type]) > 0:
-                kp_array = np.array(keypoints[kp_type])
-                x = kp_array[:, 0]
-                y = kp_array[:, 1]
-                visibility = kp_array[:, 3] if kp_array.shape[1] > 3 else np.ones_like(x)
-                
-                for j in range(len(x)):
-                    if visibility[j] > 0.2:  # Only draw visible keypoints
-                        axes[i, 1].add_patch(Circle((x[j], y[j]), radius=3, color=color, alpha=visibility[j]))
+        # Plot keypoints with explicit colors
+        if len(keypoints['pose_landmarks']) > 0:
+            kp_array = np.array(keypoints['pose_landmarks'])
+            total_keypoints['pose'] += 1
+            for j in range(len(kp_array)):
+                if kp_array[j, 3] > 0.2:  # Only draw visible keypoints
+                    circle = plt.Circle((kp_array[j, 0], kp_array[j, 1]), 3, color='blue', alpha=kp_array[j, 3])
+                    axes[i, 1].add_patch(circle)
+                    non_zero_features += 1
+                    
+        if len(keypoints['left_hand_landmarks']) > 0:
+            kp_array = np.array(keypoints['left_hand_landmarks'])
+            total_keypoints['left_hand'] += 1
+            for j in range(len(kp_array)):
+                if kp_array[j, 3] > 0.2:  # Only draw visible keypoints
+                    circle = plt.Circle((kp_array[j, 0], kp_array[j, 1]), 3, color='green', alpha=kp_array[j, 3])
+                    axes[i, 1].add_patch(circle)
+                    non_zero_features += 1
+                    
+        if len(keypoints['right_hand_landmarks']) > 0:
+            kp_array = np.array(keypoints['right_hand_landmarks'])
+            total_keypoints['right_hand'] += 1
+            for j in range(len(kp_array)):
+                if kp_array[j, 3] > 0.2:  # Only draw visible keypoints
+                    circle = plt.Circle((kp_array[j, 0], kp_array[j, 1]), 3, color='red', alpha=kp_array[j, 3])
+                    axes[i, 1].add_patch(circle)
+                    non_zero_features += 1
         
         axes[i, 1].axis('off')
     
@@ -274,7 +302,73 @@ def visualize_pose_keypoints(video_path, save_path=None):
     plt.savefig(save_path)
     plt.close()
     
+    # Print diagnostic information
+    print(f"Keypoint statistics in visualization:")
+    print(f"  - Pose keypoints: {total_keypoints['pose']} frames with data")
+    print(f"  - Left hand keypoints: {total_keypoints['left_hand']} frames with data")
+    print(f"  - Right hand keypoints: {total_keypoints['right_hand']} frames with data")
+    print(f"  - Total non-zero features: {non_zero_features}")
+    
     return save_path
+
+def compare_features_stats(features):
+    """
+    Print diagnostic statistics about the extracted features
+    to help debug model issues.
+    
+    Args:
+        features: The extracted features tensor
+    """
+    # Check for NaNs or infinities
+    nan_count = torch.isnan(features).sum().item()
+    inf_count = torch.isinf(features).sum().item()
+    
+    # Get basic statistics
+    mean_val = features.mean().item()
+    std_val = features.std().item()
+    min_val = features.min().item()
+    max_val = features.max().item()
+    
+    # Check range distribution
+    in_range_minus1_1 = ((features >= -1.0) & (features <= 1.0)).float().mean().item() * 100
+    zeros = (features == 0.0).float().mean().item() * 100
+    
+    print("\nFeature Statistics:")
+    print(f"  - Shape: {features.shape}")
+    print(f"  - NaN values: {nan_count}")
+    print(f"  - Inf values: {inf_count}")
+    print(f"  - Mean: {mean_val:.6f}")
+    print(f"  - Std Dev: {std_val:.6f}")
+    print(f"  - Min: {min_val:.6f}")
+    print(f"  - Max: {max_val:.6f}")
+    print(f"  - % in [-1, 1] range: {in_range_minus1_1:.2f}%")
+    print(f"  - % zeros: {zeros:.2f}%")
+
+def preprocess_and_standardize_features(features):
+    """
+    Apply additional preprocessing to features to match what the model expects.
+    
+    Args:
+        features: torch.Tensor of shape [seq_len, feat_dim]
+    
+    Returns:
+        Preprocessed features
+    """
+    # Feature statistics from evaluation data might differ from our extracted features
+    # Let's standardize to have similar statistics to what the model expects
+    
+    # 1. Replace any NaN or Inf values
+    features = torch.nan_to_num(features, nan=0.0, posinf=1.0, neginf=-1.0)
+    
+    # 2. Clip values to a reasonable range
+    features = torch.clamp(features, -3.0, 3.0)
+    
+    # 3. Ensure all values for visibility are positive (in case normalization made them negative)
+    # Assuming visibility features are at every 4th position
+    for i in range(3, features.shape[1], 4):
+        features[:, i] = torch.abs(features[:, i])
+    
+    return features
 
 def extract_pose_features(video_path):
     """
@@ -335,7 +429,19 @@ def extract_pose_features(video_path):
     
     print(f"Processed {valid_frames} valid frames out of {num_frames} total frames")
     
-    return features, attention_mask
+    features = preprocess_and_standardize_features(features)
+    
+    # Print diagnostic information about the features
+    compare_features_stats(features)
+    
+    sign_inputs = {
+        'pose': features,
+        'mae': None,
+        'dino': None,
+        'sign2vec': None
+    }
+    
+    return sign_inputs, attention_mask
 
 def process_input(input_video_path):
     """
@@ -356,7 +462,7 @@ def process_input(input_video_path):
         print(f"Pose keypoints visualization saved to: {vis_path}")
         
         # Extract pose features from the video
-        features, attention_mask = extract_pose_features(input_video_path)
+        sign_inputs, attention_mask = extract_pose_features(input_video_path)
         
         # Check if we have valid frames
         valid_frame_count = attention_mask.sum().item()
@@ -369,26 +475,24 @@ def process_input(input_video_path):
         device = next(model.parameters()).device
         model_dtype = next(model.parameters()).dtype
         
+        # The model expects just the pose features, which is what we'll use
         batch = {
-            "sign_inputs": features.unsqueeze(0).to(device).to(model_dtype),
+            "sign_inputs": sign_inputs['pose'].unsqueeze(0).to(device).to(model_dtype),
             "attention_mask": attention_mask.unsqueeze(0).to(device).to(model_dtype),
             # No labels needed for inference
         }
         
-        # Get generation parameters from config
+        # Get generation parameters directly from the model config
         generation_params = {
-            "early_stopping": model.config.early_stopping,
-            "no_repeat_ngram_size": model.config.no_repeat_ngram_size,
             "max_length": config['EvaluationArguments']['max_token_length'],
             "num_beams": model.config.num_beams,
-            "bos_token_id": tokenizer.pad_token_id,
+            "early_stopping": model.config.early_stopping,
             "length_penalty": model.config.length_penalty,
-            "temperature": model.config.temperature,
             "do_sample": model.config.do_sample,
+            "temperature": model.config.temperature if hasattr(model.config, "temperature") else 1.0,
             "top_k": model.config.top_k if hasattr(model.config, "top_k") else None,
             "top_p": model.config.top_p if hasattr(model.config, "top_p") else None,
-            "repetition_penalty": model.config.repetition_penalty if hasattr(model.config, "repetition_penalty") else None,
-            "output_attentions": True,
+            "bos_token_id": tokenizer.pad_token_id,
             "return_dict_in_generate": True
         }
         
@@ -397,12 +501,8 @@ def process_input(input_video_path):
         
         print(f"Using generation parameters: {generation_params}")
         
-        # Try different generation approaches until we get a reasonable result
-        valid_output = False
-        decoded_pred = ""
-        
-        # First try beam search with sampling
-        print("Attempting generation with beam search and sampling...")
+        # Generate translation
+        print("Generating translation...")
         with torch.no_grad():
             outputs = model.generate(
                 **batch,
@@ -413,6 +513,10 @@ def process_input(input_video_path):
             print(f"Generated sequences shape: {sequences.shape}")
             print(f"First sequence tokens: {sequences[0]}")
             
+            # Check for very short sequences (likely just special tokens)
+            if sequences.shape[1] <= 4:
+                print("Warning: Very short sequence detected, likely problematic")
+            
             # Replace invalid tokens with <unk>
             if len(np.where(sequences.cpu().numpy() > len(tokenizer) - 1)[1]) > 0:
                 sequences[sequences > len(tokenizer) - 1] = tokenizer.unk_token_id
@@ -421,71 +525,50 @@ def process_input(input_video_path):
             decoded_pred = tokenizer.decode(sequences[0], skip_special_tokens=True)
             print(f"Raw decoded prediction: '{decoded_pred}'")
             
-            # Check if output is valid
-            valid_output = is_valid_sentence(decoded_pred)
+            # If we got a very short output, let the user see it anyway
+            if len(decoded_pred.strip()) < 10 and sequences.shape[1] > 4:
+                print(f"Output is very short, but seems valid: '{decoded_pred}'")
+                return decoded_pred
             
-        # If beam search with sampling fails, try greedy search
-        if not valid_output:
-            print("Beam search output invalid, trying greedy search...")
-            with torch.no_grad():
+            # If output is empty or too short, try a more direct approach
+            if not decoded_pred.strip() or sequences.shape[1] <= 4:
+                print("First generation attempt produced minimal output, trying with different parameters...")
+                
+                # Try with more conservative parameters
+                fallback_params = {
+                    "max_length": config['EvaluationArguments']['max_token_length'],
+                    "num_beams": 5,  # Use consistent beam size
+                    "do_sample": False,  # No sampling
+                    "temperature": 1.0,
+                    "length_penalty": 0.6,
+                    "early_stopping": True,
+                    "bos_token_id": tokenizer.pad_token_id,
+                    "return_dict_in_generate": True
+                }
+                
                 outputs = model.generate(
                     **batch,
-                    max_length=config['EvaluationArguments']['max_token_length'],
-                    num_beams=1,  # Use greedy search
-                    do_sample=False,
-                    top_k=None,
-                    top_p=None,
-                    temperature=1.0,
-                    output_attentions=False,
-                    return_dict_in_generate=True
+                    **fallback_params
                 )
                 
                 sequences = outputs.sequences
-                print(f"Greedy search sequences shape: {sequences.shape}")
-                print(f"Greedy search first sequence tokens: {sequences[0]}")
+                print(f"Fallback generation sequences shape: {sequences.shape}")
+                print(f"Fallback sequence tokens: {sequences[0]}")
                 
                 if len(np.where(sequences.cpu().numpy() > len(tokenizer) - 1)[1]) > 0:
                     sequences[sequences > len(tokenizer) - 1] = tokenizer.unk_token_id
                     
                 decoded_pred = tokenizer.decode(sequences[0], skip_special_tokens=True)
-                print(f"Greedy search decoded: '{decoded_pred}'")
+                print(f"Fallback decoded prediction: '{decoded_pred}'")
                 
-                valid_output = is_valid_sentence(decoded_pred)
-        
-        # If greedy search fails, try pure beam search without sampling
-        if not valid_output:
-            print("Greedy search output invalid, trying pure beam search...")
-            with torch.no_grad():
-                outputs = model.generate(
-                    **batch,
-                    max_length=config['EvaluationArguments']['max_token_length'],
-                    num_beams=5,  # Use more beams
-                    do_sample=False,  # No sampling
-                    temperature=1.0,
-                    length_penalty=0.6,
-                    output_attentions=False,
-                    return_dict_in_generate=True
-                )
-                
-                sequences = outputs.sequences
-                print(f"Pure beam search sequences shape: {sequences.shape}")
-                print(f"Pure beam search first sequence tokens: {sequences[0]}")
-                
-                if len(np.where(sequences.cpu().numpy() > len(tokenizer) - 1)[1]) > 0:
-                    sequences[sequences > len(tokenizer) - 1] = tokenizer.unk_token_id
-                    
-                decoded_pred = tokenizer.decode(sequences[0], skip_special_tokens=True)
-                print(f"Pure beam search decoded: '{decoded_pred}'")
-                
-                valid_output = is_valid_sentence(decoded_pred)
-                
-        if not valid_output:
-            return "The model detected sign language but couldn't produce a reliable translation."
+                # If still no good output, tell the user
+                if not decoded_pred.strip() or sequences.shape[1] <= 4:
+                    return "The model detected sign language but couldn't produce a reliable translation."
             
         # Post-process the prediction
         processed_pred, _ = postprocess_text([decoded_pred], [""])
         
-        # Additional cleaning for the output
+        # Return the result, even if it's short
         result = processed_pred[0].strip()
         if not result:
             return "Could not translate the sign language. Please try another video or ensure the signer is clearly visible."
