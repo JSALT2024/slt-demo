@@ -1,5 +1,6 @@
 import gradio as gr
 import os
+os.environ["KMP_DUPLICATE_LIB_OK"]="TRUE"
 from backend import process_input, visualize_pose_keypoints
 
 def process_video(input_video_path):
