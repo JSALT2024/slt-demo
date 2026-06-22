@@ -10,6 +10,12 @@ from mediapipe.tasks.python import vision
 from scipy.optimize import linear_sum_assignment
 from ultralytics import YOLO
 
+import os
+import json
+import numpy as np
+from datetime import datetime
+import cv2
+
 
 def crop_frame(image, bounding_box):
     x, y, w, h = bounding_box
@@ -488,6 +494,7 @@ def predict_pose(video: List[np.ndarray], models: tuple, sign_space=4, yolo_sign
         ]
         for name, kp in name_to_keypoints:
             if len(kp) > 0:
+                kp = np.array(kp, dtype=float)
                 kp = np.round(kp[:, :2]).astype(int)
                 x, y, w, h = cv2.boundingRect(kp)
                 cropped_local_bbox = get_centered_box(kp, np.max([w, h]), scale_factor=1.2)
@@ -508,10 +515,15 @@ def predict_pose(video: List[np.ndarray], models: tuple, sign_space=4, yolo_sign
         keypoints_cropped = deepcopy(keypoints)
         for name in keypoints_cropped:
             if len(keypoints_cropped[name]) > 0:
+                # OPRAVA: Explicitní převod na float pole před matematikou a zaokrouhlováním
+                keypoints_cropped[name] = np.array(keypoints_cropped[name], dtype=float)
+                keypoints[name] = np.array(keypoints[name], dtype=float)
+
                 keypoints_cropped[name][:, 0] -= x_move
                 keypoints_cropped[name][:, 1] -= y_move
-                keypoints_cropped[name] = np.round(keypoints_cropped[name], 3).tolist()
-                keypoints[name] = np.round(keypoints[name], 3).tolist()
+                # Slice [:, :2] to keep only the first two columns before saving
+                keypoints_cropped[name] = np.round(keypoints_cropped[name][:, :2], 3).tolist()
+                keypoints[name] = np.round(keypoints[name][:, :2], 3).tolist()
 
         # save processed data
         results["keypoints"].append(keypoints)

@@ -1,0 +1,5 @@
+Primární: tmavě modrá (#1E3A5F)
+Sekundární: tyrkysová (#00B8A9)
+Akcent: světle tyrkysová (#4ECDC4)
+Pozadí: bílá (#FFFFFF)
+Povrchy: světle šedá (#F5F7FA)

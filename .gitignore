@@ -1,3 +1,11 @@
+# Added by E. Plic
+DELETE/
+Uni_Sign/unisign_model/best_checkpoint.pth
+requirements.txt
+
+# optional:
+#/golden_data
+
 /checkpoints
 /data
 /dataset/__pycache__
