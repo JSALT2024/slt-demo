@@ -4,12 +4,16 @@ os.environ["KMP_DUPLICATE_LIB_OK"]="TRUE"
 from backend import process_input
 
 # upload 1GB modelu
-from huggingface_hub import hf_hub_download
 print("Checking for large model file...")
-model_path = hf_hub_download(
-    repo_id="plice13/sign-language-weights", 
-    filename="best_checkpoint.pth"                  
-)
+local_model_path = os.path.join("Uni_Sign", "unisign_model", "best_checkpoint.pth")
+if os.path.exists(local_model_path):
+    model_path = local_model_path
+else:
+    from huggingface_hub import hf_hub_download
+    model_path = hf_hub_download(
+        repo_id="plice13/sign-language-weights", 
+        filename="best_checkpoint.pth"                  
+    )
 print(f"File successfully loaded at: {model_path}")
 os.environ["UNISIGN_WEIGHTS"] = model_path
 # ====================
@@ -18,9 +22,7 @@ os.environ["UNISIGN_WEIGHTS"] = model_path
 def process_video(input_video_path):
     # Generate a translation in the backend.
     translation = process_input(input_video_path)
-    
-    # Return just the translation if no visualization is found
-    return translation, None
+    return translation
 
 # Custom CSS for the dark green background and centered layout
 custom_css = """
