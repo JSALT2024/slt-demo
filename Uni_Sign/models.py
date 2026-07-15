@@ -137,15 +137,15 @@ class Uni_Sign(nn.Module):
             
             for layer in self.fusion_gate:
                 try:
-                    if isinDataLoaderance(layer, nn.Conv1d):
+                    if isinstance(layer, nn.Conv1d):
                         nn.init.constant_(layer.weight, 0)
                         nn.init.constant_(layer.bias, 0)
                 except:
                     print("NOT IMPLEMENTED...")
 
-        # Načte pouze strukturu architektury z config.json
+        # Load only the model architecture structure from config.json
         mt5_config = MT5Config.from_pretrained(mt5_path)
-        # Vytvoří model s prázdnými vahami, které hned v dalším kroku přepíšeme
+        # Create model with uninitialized weights, which will be loaded in the next step
         self.mt5_model = MT5ForConditionalGeneration(mt5_config)
 
         self.mt5_tokenizer = T5Tokenizer.from_pretrained(mt5_path, legacy=False)
@@ -401,15 +401,3 @@ class Uni_Sign(nn.Module):
                             )
 
         return out
-
-def get_requires_grad_dict(model):
-    param_requires_grad = {name: True for name, param in model.named_parameters()}
-    param_requires_grad_right = {}
-    for key in param_requires_grad.keys():
-        if 'left' in key:
-            param_requires_grad_right[key.replace("left", 'right')] = param_requires_grad[key]
-    param_requires_grad = {**param_requires_grad,
-                           **param_requires_grad_right}
-    params_to_update = {k: v for k, v in model.state_dict().items() if param_requires_grad.get(k, True)}
-
-    return params_to_update

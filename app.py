@@ -3,7 +3,7 @@ import os
 os.environ["KMP_DUPLICATE_LIB_OK"]="TRUE"
 from backend import process_input
 
-# upload 1GB modelu
+# Check and download the 1GB pre-trained model weights if not cached
 print("Checking for large model file...")
 local_model_path = os.path.join("Uni_Sign", "unisign_model", "best_checkpoint.pth")
 if os.path.exists(local_model_path):
