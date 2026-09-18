@@ -30,13 +30,20 @@ print(f"File successfully loaded at: {model_path}")
 os.environ["UNISIGN_WEIGHTS"] = model_path
 # ====================
 
-# Prepare base64-encoded logo for the fixed institution badge
-logo_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "fav_zcu_logo.png")
-logo_src = ""
-if os.path.exists(logo_path):
-    with open(logo_path, "rb") as f:
-        logo_b64 = base64.b64encode(f.read()).decode("utf-8")
-        logo_src = f"data:image/png;base64,{logo_b64}"
+# Prepare base64-encoded logos for header badges
+fav_logo_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "fav_zcu_logo.png")
+fav_logo_src = ""
+if os.path.exists(fav_logo_path):
+    with open(fav_logo_path, "rb") as f:
+        fav_b64 = base64.b64encode(f.read()).decode("utf-8")
+        fav_logo_src = f"data:image/png;base64,{fav_b64}"
+
+zcu_white_logo_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "zcu_logo_white.svg")
+zcu_white_logo_src = ""
+if os.path.exists(zcu_white_logo_path):
+    with open(zcu_white_logo_path, "rb") as f:
+        zcu_white_b64 = base64.b64encode(f.read()).decode("utf-8")
+        zcu_white_logo_src = f"data:image/svg+xml;base64,{zcu_white_b64}"
 
 # Paths to the 3 example videos (first 3 from wlasl, re-encoded to H.264)
 example_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "examples", "wlasl")
@@ -44,9 +51,9 @@ if not os.path.exists(example_dir):
     example_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "DELETE", "examples", "wlasl")
 
 example_videos = [
-    os.path.join(example_dir, "07093.mp4"),
-    os.path.join(example_dir, "32167.mp4"),
-    os.path.join(example_dir, "63415.mp4"),
+    os.path.join(example_dir, "book.mp4"),
+    os.path.join(example_dir, "language.mp4"),
+    os.path.join(example_dir, "window.mp4"),
 ]
 
 # Load CSS from external style.css file
@@ -54,16 +61,98 @@ css_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "style.css")
 with open(css_path, "r", encoding="utf-8") as f:
     custom_css = f.read()
 
+# Load information content from DELETE/slt_demod.md (or slt_demot.md)
+info_path_candidates = [
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "DELETE", "slt_demod.md"),
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "DELETE", "slt_demot.md"),
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "slt_demod.md"),
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "slt_demot.md"),
+]
+info_markdown = ""
+for p in info_path_candidates:
+    if os.path.exists(p):
+        with open(p, "r", encoding="utf-8") as f:
+            info_markdown = f.read()
+        break
+
+if not info_markdown:
+    info_markdown = """# Sign Language Translation Demo
+
+This interactive demo showcases **automatic sign language translation from video to text**.
+
+The current version demonstrates the processing of **American Sign Language (ASL)** using modern computer vision and deep learning methods.
+
+## How to use the demo
+
+1. **Upload a video** or select one of the provided examples.
+2. Click **Submit** to process the video.
+3. The predicted text will be displayed as the output.
+
+For best results, the signer should be clearly visible, including the upper body, hands, and face.
+
+> **Note:** This is a research demonstrator. Predictions may not always be accurate, especially for videos that differ significantly from the data used during training.
+
+## How does it work?
+
+The system consists of two main stages: **pose preprocessing** and **sign language translation**.
+
+### Pose preprocessing
+
+The input video is first converted into a structured pose representation. Keypoints describing the signer's **body, hands, and face** are extracted and normalized before being passed to the translation model.
+
+Body keypoints are normalized globally, while hand and facial keypoints are normalized locally to preserve detailed information about their shape and movement.
+
+More information about the preprocessing pipeline is available in the [PoseEstimation repository](https://github.com/JSALT2024/PoseEstimation).
+
+### Sign language translation
+
+The extracted pose sequence is processed using a model based on **Uni-Sign**, a unified framework for sign language understanding.
+
+More information about the model and our implementation is available in the [Uni-Sign repository](https://github.com/zeleznyt/Uni-Sign).
+
+## Resources
+
+- [Demo source code](https://github.com/JSALT2024/slt-demo/tree/uni-sign-EP)
+- [Pose estimation and preprocessing](https://github.com/JSALT2024/PoseEstimation)
+- [Uni-Sign implementation](https://github.com/zeleznyt/Uni-Sign)
+- **Uni-Sign:** *Uni-Sign: Toward Unified Sign Language Understanding at Scale*, Li et al., ICLR 2025
+
+## Acknowledgements
+
+This demonstrator was developed at the **University of West Bohemia (ZČU), Department of Cybernetics, Computer Vision group**.
+
+Development was supported by the **2026 ZČU internal mini-project programme for the development and wider use of artificial intelligence**.
+
+The system builds upon the **Uni-Sign** framework. We thank its authors and the open-source sign language research community for making their work publicly available.
+"""
+
 
 with gr.Blocks(title="Sign Language Translation", css=custom_css, theme=gr.themes.Default(primary_hue="amber", neutral_hue="neutral")) as app:
-    
-    gr.Markdown("<h1>Sign Language to Text Translation</h1>")
-    gr.Markdown("<h3 class='page-subtitle'>Upload an ASL video and get a text translation.</h3>")
     
     current_video = gr.State("")
 
     with gr.Column(elem_id="main-layout"):
         
+        # App Header Row: Left Badge (ZČU White Logo), Title & Subtitle, Right Badge (FAV ZČU Logo)
+        gr.HTML(f"""
+        <div class="app-header-container">
+            <div class="header-badge header-badge-left">
+                <a href="https://www.zcu.cz" target="_blank" rel="noopener noreferrer" title="Západočeská univerzita v Plzni">
+                    <img src="{zcu_white_logo_src}" alt="Západočeská univerzita v Plzni" class="header-badge-img" />
+                </a>
+            </div>
+            <div class="header-titles">
+                <h1 class="app-title">Sign Language to Text Translation</h1>
+                <h2 class="app-subtitle">Upload an ASL video and get a text translation.</h2>
+            </div>
+            <div class="header-badge header-badge-right">
+                <a href="https://fav.zcu.cz" target="_blank" rel="noopener noreferrer" title="Fakulta aplikovaných věd ZČU">
+                    <img src="{fav_logo_src}" alt="Fakulta aplikovaných věd ZČU" class="header-badge-img" />
+                </a>
+            </div>
+        </div>
+        """, elem_classes=["app-header-html"])
+
         # Card 1: Upload Video Box (Compact Dropzone & Info Row)
         with gr.Column(elem_classes=["ui-card"]):
             with gr.Row(elem_classes=["card-header-row"]):
@@ -105,30 +194,22 @@ with gr.Blocks(title="Sign Language Translation", css=custom_css, theme=gr.theme
             gr.Markdown("<h3 class='card-title'>Examples</h3>")
             with gr.Row(elem_classes=["examples-row"]):
                 with gr.Column(scale=1):
-                    gr.Video(value=example_videos[0], interactive=False, show_label=False, autoplay=False, height=160)
+                    gr.HTML("<div class='example-title'>Book</div>")
+                    gr.Video(value=example_videos[0], interactive=False, show_label=False, autoplay=False, height=160, mirror_webcam=False)
                     btn_ex1 = gr.Button("Use Example 1", variant="secondary", elem_classes=["example-btn"])
                 with gr.Column(scale=1):
-                    gr.Video(value=example_videos[1], interactive=False, show_label=False, autoplay=False, height=160)
+                    gr.HTML("<div class='example-title'>Language</div>")
+                    gr.Video(value=example_videos[1], interactive=False, show_label=False, autoplay=False, height=160, mirror_webcam=False)
                     btn_ex2 = gr.Button("Use Example 2", variant="secondary", elem_classes=["example-btn"])
                 with gr.Column(scale=1):
-                    gr.Video(value=example_videos[2], interactive=False, show_label=False, autoplay=False, height=160)
+                    gr.HTML("<div class='example-title'>Window</div>")
+                    gr.Video(value=example_videos[2], interactive=False, show_label=False, autoplay=False, height=160, mirror_webcam=False)
                     btn_ex3 = gr.Button("Use Example 3", variant="secondary", elem_classes=["example-btn"])
 
         # Card 4: Information Box
         with gr.Column(elem_classes=["ui-card"]):
             gr.Markdown("<h3 class='card-title'>Information</h3>")
-            gr.HTML("""
-            <div class="info-content">
-                <div class="info-text">
-                    Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.
-                </div>
-                <a href="#" class="advanced-demo-link">
-                    <span class="adv-line adv-line-1">EXPLORE</span>
-                    <span class="adv-line adv-line-2">ADVANCED</span>
-                    <span class="adv-line adv-line-3">⭐DEMO⭐</span>
-                </a>
-            </div>
-            """)
+            gr.Markdown(info_markdown, elem_classes=["info-markdown"])
             
     # Fullscreen Floating Modal Window for Video Preview & Trimming
     with gr.Column(elem_classes=["modal-overlay"], visible=False) as preview_modal:
@@ -142,7 +223,8 @@ with gr.Blocks(title="Sign Language Translation", css=custom_css, theme=gr.theme
             modal_video = gr.Video(
                 interactive=True,
                 show_label=False,
-                sources=["webcam", "upload"],
+                sources=["upload", "webcam"],
+                mirror_webcam=False,
                 elem_classes=["modal-video-player"],
             )
             
@@ -150,16 +232,16 @@ with gr.Blocks(title="Sign Language Translation", css=custom_css, theme=gr.theme
                 modal_save_btn = gr.Button("✓ Save & Use Video", variant="primary", elem_classes=["modal-done-btn"])
 
     def start_translating_ui():
-        return gr.update(visible=True), ""
+        spinner_html = """<div class="translation-content-box"><div class="loading-container"><div class="pulse-spinner"></div></div></div>"""
+        return gr.update(visible=True), spinner_html
 
     def finish_translating(video_path):
-        #if not video_path:
-        #    return """<div class="translation-content-box"><div style="color: #ff6b6b; font-weight: 600; font-size: 15px; text-align: center;">Please upload or select a video first.</div></div>"""
+        if not video_path:
+            return """<div class="translation-content-box"><div style="color: #dba70e; font-weight: 600; font-size: 15px; text-align: center;">Please select or upload a video first.</div></div>"""
         raw_result = process_video(video_path)
         clean_result = str(raw_result).strip()
-        #if clean_result.startswith("Error") or "error" in clean_result.lower():
-        #    return f"""<div class="translation-content-box"><div style="color: #ff6b6b; font-weight: 600; font-size: 15px; text-align: center;">{clean_result}</div></div>"""
-        # věřím že není potřeba protože vždy musí být path, a errory budu řešit později
+        if clean_result.startswith("Error") or "error" in clean_result.lower():
+            return f"""<div class="translation-content-box"><div style="color: #ff6b6b; font-weight: 600; font-size: 14px; text-align: center;">{clean_result}</div></div>"""
         return f"""<div class="translation-content-box"><div class="translation-text">{clean_result}</div></div>"""
 
     # Upload file event
@@ -181,19 +263,19 @@ with gr.Blocks(title="Sign Language Translation", css=custom_css, theme=gr.theme
 
     # Examples click events with smooth auto-scroll to top
     btn_ex1.click(
-        fn=lambda: handle_select_example(example_videos[0], "Example 1"),
+        fn=lambda: handle_select_example(example_videos[0], "Book"),
         inputs=None,
         outputs=[current_video, upload_file, record_yourself_btn, video_info_row, video_name_md, submit_btn, translation_card, modal_video],
         js=scroll_top_js,
     )
     btn_ex2.click(
-        fn=lambda: handle_select_example(example_videos[1], "Example 2"),
+        fn=lambda: handle_select_example(example_videos[1], "Language"),
         inputs=None,
         outputs=[current_video, upload_file, record_yourself_btn, video_info_row, video_name_md, submit_btn, translation_card, modal_video],
         js=scroll_top_js,
     )
     btn_ex3.click(
-        fn=lambda: handle_select_example(example_videos[2], "Example 3"),
+        fn=lambda: handle_select_example(example_videos[2], "Window"),
         inputs=None,
         outputs=[current_video, upload_file, record_yourself_btn, video_info_row, video_name_md, submit_btn, translation_card, modal_video],
         js=scroll_top_js,
@@ -238,15 +320,7 @@ with gr.Blocks(title="Sign Language Translation", css=custom_css, theme=gr.theme
         outputs=translation_display,
     )
 
-    # Fixed floating badge in bottom-right corner with full-width logo
-    gr.HTML(f"""
-    <div class="support-badge">
-        <span class="support-badge-text">Research supported by:</span>
-        <a href="https://fav.zcu.cz" target="_blank" rel="noopener noreferrer">
-            <img src="{logo_src}" alt="Faculty of Applied Sciences, University of West Bohemia in Pilsen" class="support-badge-img" />
-        </a>
-    </div>
-    """)
+
 
 if __name__ == "__main__":
     app.launch()
