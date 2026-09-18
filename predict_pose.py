@@ -1,4 +1,6 @@
 import os
+import tempfile
+import subprocess
 from copy import deepcopy
 from typing import List
 
@@ -138,6 +140,34 @@ def load_video_cv(path: str) -> tuple:
             img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
             video.append(img)
     cap.release()
+
+    # Fallback to ffmpeg if OpenCV fails to read any frames or codec is unsupported
+    if len(video) == 0:
+        try:
+            import imageio_ffmpeg
+            ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
+            temp_out = os.path.join(tempfile.gettempdir(), f"fallback_{os.path.basename(path)}.mp4")
+            subprocess.run([ffmpeg_exe, "-y", "-i", path, "-c:v", "libx264", "-pix_fmt", "yuv420p", temp_out], capture_output=True)
+            if os.path.exists(temp_out):
+                cap = cv2.VideoCapture(temp_out)
+                fps = cap.get(cv2.CAP_PROP_FPS)
+                ret = True
+                while ret:
+                    ret, img = cap.read()
+                    if ret:
+                        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+                        video.append(img)
+                cap.release()
+                try:
+                    os.remove(temp_out)
+                except Exception:
+                    pass
+        except Exception as err:
+            print(f"Warning: ffmpeg fallback decoding failed: {err}")
+
+    if len(video) == 0:
+        raise ValueError(f"Could not read any frames from video: {path}")
+
     return video, fps
 
 

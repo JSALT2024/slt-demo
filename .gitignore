@@ -1,6 +1,7 @@
 # Added by E. Plic
 DELETE/
-Uni_Sign/unisign_model/best_checkpoint.pth
+Uni_Sign/unisign_model/*.pth
+*.pth
 requirements.txt
 
 # optional:

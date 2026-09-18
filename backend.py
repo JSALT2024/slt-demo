@@ -21,7 +21,7 @@ class InferenceConfig:
     """Configuration class for Uni_Sign model inference."""
     def __init__(self):
         # Path to the pre-trained weights checkpoint
-        self.finetune = os.environ.get("UNISIGN_WEIGHTS", r"./Uni_Sign/unisign_model/best_checkpoint.pth")
+        self.finetune = os.environ.get("UNISIGN_WEIGHTS", r"./Uni_Sign/unisign_model/-wlasl.pth")
         self.dataset = "YTASL"
         self.task = "SLT"
         self.max_length = 256
