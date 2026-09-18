@@ -1,27 +1,11 @@
 body, html, gradio-app {
     background-color: #221f1f !important;
     color: #f5f5f5 !important;
-    margin: 0 !important;
-    padding: 0 !important;
-    width: 100% !important;
-}
-.gradio-container {
-    background-color: #221f1f !important;
-    border: none !important;
-    width: 100% !important;
-    max-width: 100% !important;
-    margin: 0 auto !important;
-    display: flex !important;
-    flex-direction: column !important;
-    align-items: center !important;
 }
 
 #main-layout {
     max-width: 820px !important;
-    width: 100% !important;
-    margin: 0 auto 24px auto !important;
-    display: flex !important;
-    flex-direction: column !important;
+    margin: 0 auto 0 auto !important;
     gap: 12px !important;
 }
 
@@ -32,8 +16,6 @@ body, html, gradio-app {
     border-radius: 10px !important;
     padding: 16px 20px !important;
     box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45) !important;
-    width: 100% !important;
-    box-sizing: border-box !important;
 }
 
 /* Card title with breathing room from top edge */
@@ -42,42 +24,11 @@ body, html, gradio-app {
     font-size: 19px !important;
     font-weight: 700 !important;
     letter-spacing: 0.8px !important;
-    padding-top: 2px !important;
-    text-transform: uppercase !important;
 }
 
-/* Card Header Row with right-aligned Record Yourself button */
-.card-header-row {
-    display: flex !important;
-    flex-direction: row !important;
-    flex-wrap: nowrap !important;
-    justify-content: space-between !important;
-    align-items: center !important;
-    width: 100% !important;
-    margin-bottom: 12px !important;
-}
-
-.card-header-row > *:first-child,
-.card-header-row > .prose,
-.card-header-row > div:first-child {
-    flex: 1 1 auto !important;
-    min-width: 0 !important;
-    margin: 0 !important;
-}
-
-.card-header-row .card-title {
-    margin: 0 !important;
-    padding: 0 !important;
-}
 
 .record-btn-col {
-    flex: 0 0 auto !important;
-    width: auto !important;
-    min-width: 0 !important;
-    margin: 0 0 0 auto !important;
-    display: flex !important;
-    align-items: center !important;
-    justify-content: flex-end !important;
+    margin-top: 0;
 }
 
 .record-yourself-btn {
@@ -89,16 +40,9 @@ body, html, gradio-app {
     letter-spacing: 0.6px !important;
     border-radius: 6px !important;
     height: 32px !important;
-    padding: 0 14px !important;
     cursor: pointer !important;
     transition: all 0.2s ease !important;
     box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35) !important;
-    white-space: nowrap !important;
-    display: inline-flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-    width: auto !important;
-    text-transform: uppercase !important;
 }
 
 .record-yourself-btn:hover {
@@ -120,7 +64,7 @@ h1 {
     margin-bottom: 2px !important;
     white-space: nowrap !important;
 }
-h3.page-subtitle {
+h2 {
     text-align: center;
     color: #f5f5f5 !important;
     font-weight: 400 !important;
@@ -131,7 +75,7 @@ h3.page-subtitle {
 }
 
 /* Primary Translate Button */
-.translate-btn, button.primary {
+.translate-btn, .modal-done-btn, .button.primary {
     background: linear-gradient(135deg, #dba70e 0%, #be9007 100%) !important;
     color: #221f1f !important;
     font-weight: 800 !important;
@@ -145,35 +89,18 @@ h3.page-subtitle {
     transition: all 0.2s ease !important;
     margin: 6px 0 !important;
 }
-.translate-btn:hover, button.primary:hover {
+.translate-btn:hover, .modal-done-btn:hover, button.primary:hover {
     background: linear-gradient(135deg, #e8b625 0%, #dba70e 100%) !important;
     transform: translateY(-1px) !important;
     box-shadow: 0 5px 18px rgba(219, 167, 14, 0.45) !important;
 }
 
-/* Form component styling */
-textarea, input[type="text"] {
-    background-color: #1a1818 !important;
-    color: #f5f5f5 !important;
-    border-color: rgba(219, 167, 14, 0.3) !important;
-}
-textarea:focus, input[type="text"]:focus {
-    border-color: #dba70e !important;
-    box-shadow: 0 0 0 2px rgba(219, 167, 14, 0.25) !important;
-}
-
 /* Ensure Examples are strictly 3 side-by-side columns with restored sizing */
 .examples-row {
-    display: flex !important;
-    flex-direction: row !important;
-    flex-wrap: nowrap !important;
-    gap: 14px !important;
-    width: 100% !important;
+    margin-top: 0;
 }
 .examples-row > div {
-    flex: 1 1 0px !important;
     min-width: 0 !important;
-    width: 32% !important;
 }
 
 .example-btn {
@@ -194,6 +121,7 @@ textarea:focus, input[type="text"]:focus {
     border-color: #dba70e !important;
     transform: translateY(-1px) !important;
 }
+
 
 /* Translation Result & Loading Box */
 #translation-card .block,
@@ -272,31 +200,6 @@ textarea:focus, input[type="text"]:focus {
     margin: 0 !important;
     padding: 0 !important;
     width: 100% !important;
-}
-
-/* Loading State Spinner */
-.loading-container {
-    display: flex !important;
-    flex-direction: column !important;
-    align-items: center !important;
-    justify-content: center !important;
-    padding: 8px 0 !important;
-}
-
-.pulse-spinner {
-    width: 32px !important;
-    height: 32px !important;
-    border: 3px solid rgba(219, 167, 14, 0.2) !important;
-    border-top: 3px solid #dba70e !important;
-    border-right: 3px solid #ffffff !important;
-    border-radius: 50% !important;
-    animation: spinRing 0.9s cubic-bezier(0.55, 0.15, 0.45, 0.85) infinite !important;
-    box-shadow: 0 0 12px rgba(219, 167, 14, 0.3) !important;
-}
-
-@keyframes spinRing {
-    0% { transform: rotate(0deg); }
-    100% { transform: rotate(360deg); }
 }
 
 /* Video Upload Dropzone - Prominent 2-3x Larger Height (~155px) */
@@ -646,26 +549,6 @@ input[type="file"] {
     margin-top: 16px !important;
     display: flex !important;
     justify-content: center !important;
-}
-
-.modal-done-btn {
-    background: linear-gradient(135deg, #dba70e 0%, #be9007 100%) !important;
-    color: #221f1f !important;
-    font-weight: 700 !important;
-    font-size: 15px !important;
-    border: none !important;
-    border-radius: 8px !important;
-    height: 44px !important;
-    width: 100% !important;
-    cursor: pointer !important;
-    margin: 0 !important;
-    box-shadow: 0 3px 12px rgba(219, 167, 14, 0.3) !important;
-    transition: all 0.2s ease !important;
-}
-.modal-done-btn:hover {
-    background: linear-gradient(135deg, #e8b625 0%, #dba70e 100%) !important;
-    transform: translateY(-1px) !important;
-    box-shadow: 0 5px 16px rgba(219, 167, 14, 0.45) !important;
 }
 
 /* Floating support badge in bottom-right corner */

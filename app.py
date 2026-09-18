@@ -58,7 +58,7 @@ with open(css_path, "r", encoding="utf-8") as f:
 with gr.Blocks(title="Sign Language Translation", css=custom_css, theme=gr.themes.Default(primary_hue="amber", neutral_hue="neutral")) as app:
     
     gr.Markdown("<h1>Sign Language to Text Translation</h1>")
-    gr.Markdown("<h3 class='page-subtitle'>Upload an ASL video and get a text translation.</h3>")
+    gr.Markdown("<h2>Upload an ASL video and get a text translation.</h2>")
     
     current_video = gr.State("")
 
@@ -66,7 +66,7 @@ with gr.Blocks(title="Sign Language Translation", css=custom_css, theme=gr.theme
         
         # Card 1: Upload Video Box (Compact Dropzone & Info Row)
         with gr.Column(elem_classes=["ui-card"]):
-            with gr.Row(elem_classes=["card-header-row"]):
+            with gr.Row():
                 with gr.Column(scale=1, min_width=0):
                     gr.Markdown("<h3 class='card-title'>Upload video</h3>")
                 with gr.Column(scale=0, min_width=160, elem_classes=["record-btn-col"]):
@@ -150,16 +150,16 @@ with gr.Blocks(title="Sign Language Translation", css=custom_css, theme=gr.theme
                 modal_save_btn = gr.Button("✓ Save & Use Video", variant="primary", elem_classes=["modal-done-btn"])
 
     def start_translating_ui():
-        return gr.update(visible=True), ""
+        spinner_html = """<div class="translation-content-box"><div class="loading-container"><div class="pulse-spinner"></div></div></div>"""
+        return gr.update(visible=True), spinner_html
 
     def finish_translating(video_path):
-        #if not video_path:
-        #    return """<div class="translation-content-box"><div style="color: #ff6b6b; font-weight: 600; font-size: 15px; text-align: center;">Please upload or select a video first.</div></div>"""
+        if not video_path:
+            return """<div class="translation-content-box"><div style="color: #dba70e; font-weight: 600; font-size: 15px; text-align: center;">Please select or upload a video first.</div></div>"""
         raw_result = process_video(video_path)
         clean_result = str(raw_result).strip()
-        #if clean_result.startswith("Error") or "error" in clean_result.lower():
-        #    return f"""<div class="translation-content-box"><div style="color: #ff6b6b; font-weight: 600; font-size: 15px; text-align: center;">{clean_result}</div></div>"""
-        # věřím že není potřeba protože vždy musí být path, a errory budu řešit později
+        if clean_result.startswith("Error") or "error" in clean_result.lower():
+            return f"""<div class="translation-content-box"><div style="color: #ff6b6b; font-weight: 600; font-size: 14px; text-align: center;">{clean_result}</div></div>"""
         return f"""<div class="translation-content-box"><div class="translation-text">{clean_result}</div></div>"""
 
     # Upload file event
