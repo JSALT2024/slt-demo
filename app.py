@@ -1,21 +1,19 @@
 import gradio as gr
 import os
 import base64
-import tempfile
-import subprocess
-os.environ["KMP_DUPLICATE_LIB_OK"]="TRUE"
 
-# Ensure ffmpeg from imageio_ffmpeg is in PATH for Gradio video player and processing
-try:
-    import imageio_ffmpeg
-    ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
-    ffmpeg_dir = os.path.dirname(ffmpeg_exe)
-    if ffmpeg_dir not in os.environ.get("PATH", ""):
-        os.environ["PATH"] = ffmpeg_dir + os.pathsep + os.environ.get("PATH", "")
-except Exception:
-    pass
+os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 
-from backend import process_input
+from handle_gradio import (
+    process_video,
+    handle_file_upload,
+    handle_remove_video,
+    handle_select_example,
+    open_modal,
+    open_modal_for_recording,
+    close_modal_and_save,
+    cancel_modal,
+)
 
 # Check and download the 1GB pre-trained model weights if not cached
 print("Checking for large model file...")
@@ -51,334 +49,56 @@ example_videos = [
     os.path.join(example_dir, "63415.mp4"),
 ]
 
-
-def ensure_web_compatible_video(video_path):
-    """Ensures input video is encoded in browser/OpenCV compatible H.264 format."""
-    if not video_path:
-        return video_path
-    
-    if hasattr(video_path, "path"):
-        path_str = video_path.path
-    elif isinstance(video_path, dict) and "path" in video_path:
-        path_str = video_path["path"]
-    elif isinstance(video_path, str):
-        path_str = video_path
-    else:
-        path_str = str(video_path)
-
-    if not os.path.exists(path_str):
-        return video_path
-
-    # Check if already H.264
-    try:
-        import cv2
-        cap = cv2.VideoCapture(path_str)
-        fourcc = int(cap.get(cv2.CAP_PROP_FOURCC))
-        fourcc_str = ''.join([chr((fourcc >> 8 * i) & 0xFF) for i in range(4)]).lower()
-        frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-        cap.release()
-        
-        if fourcc_str in ['h264', 'avc1'] and frame_count > 0:
-            return path_str
-    except Exception:
-        pass
-
-    # Transcode to standard H.264 using ffmpeg
-    try:
-        import imageio_ffmpeg
-        ffmpeg_bin = imageio_ffmpeg.get_ffmpeg_exe()
-        out_dir = os.path.join(tempfile.gettempdir(), "slt_compat_videos")
-        os.makedirs(out_dir, exist_ok=True)
-        mtime = int(os.path.getmtime(path_str))
-        base = os.path.splitext(os.path.basename(path_str))[0]
-        out_path = os.path.join(out_dir, f"{base}_{mtime}_h264.mp4")
-
-        if not os.path.exists(out_path) or os.path.getsize(out_path) == 0:
-            cmd = [
-                ffmpeg_bin, "-y",
-                "-i", path_str,
-                "-c:v", "libx264",
-                "-preset", "veryfast",
-                "-crf", "22",
-                "-pix_fmt", "yuv420p",
-                "-movflags", "+faststart",
-                out_path
-            ]
-            res = subprocess.run(cmd, capture_output=True, text=True)
-            if res.returncode != 0:
-                print(f"FFmpeg conversion warning: {res.stderr}")
-
-        if os.path.exists(out_path) and os.path.getsize(out_path) > 0:
-            return out_path
-    except Exception as e:
-        print(f"Video conversion error: {e}")
-
-    return path_str
+# Load CSS from external style.css file
+css_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "style.css")
+with open(css_path, "r", encoding="utf-8") as f:
+    custom_css = f.read()
 
 
-def process_video(input_video_path):
-    if not input_video_path:
-        return "Please upload or select a video first."
-    # Ensure video is in standard web/OpenCV compatible H.264 format
-    compatible_path = ensure_web_compatible_video(input_video_path)
-    translation = process_input(compatible_path)
-    return translation
-
-# Custom CSS for dark palette (#221f1f), golden accents (#dba70e), clean text (#f5f5f5), and modular cards
-custom_css = """
-body, html, gradio-app {
-    background-color: #221f1f !important;
-    color: #f5f5f5 !important;
-    margin: 0 !important;
-    padding: 0 !important;
-    width: 100% !important;
-}
-.gradio-container {
-    background-color: #221f1f !important;
-    border: none !important;
-    width: 100% !important;
-    max-width: 100% !important;
-    margin: 0 auto !important;
-    display: flex !important;
-    flex-direction: column !important;
-    align-items: center !important;
-}
-
-#main-layout {
-    max-width: 800px !important;
-    width: 100% !important;
-    margin: 10px auto 40px auto !important;
-    display: flex !important;
-    flex-direction: column !important;
-    gap: 16px !important;
-}
-
-/* Individual Modular Cards */
-.ui-card {
-    background-color: #2d2929 !important;
-    border: 1px solid rgba(219, 167, 14, 0.4) !important;
-    border-radius: 14px !important;
-    padding: 20px 24px !important;
-    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5) !important;
-    width: 100% !important;
-    box-sizing: border-box !important;
-}
-
-.card-title {
-    color: #dba70e !important;
-    font-size: 16px !important;
-    font-weight: 700 !important;
-    letter-spacing: 0.6px !important;
-    margin: 0 0 12px 0 !important;
-    text-transform: uppercase !important;
-}
-
-h1 {
-    text-align: center;
-    color: #dba70e !important;
-    font-weight: 800 !important;
-    letter-spacing: 0.5px;
-    margin-bottom: 6px;
-}
-h3.page-subtitle {
-    text-align: center;
-    color: #f5f5f5 !important;
-    font-weight: 400 !important;
-    opacity: 0.9;
-    margin-top: 0;
-    margin-bottom: 20px;
-}
-
-/* Primary Translate Button */
-.translate-btn, button.primary {
-    background: linear-gradient(135deg, #dba70e 0%, #be9007 100%) !important;
-    color: #221f1f !important;
-    font-weight: 800 !important;
-    font-size: 18px !important;
-    letter-spacing: 0.5px !important;
-    border: none !important;
-    border-radius: 10px !important;
-    height: 48px !important;
-    width: 100% !important;
-    box-shadow: 0 4px 16px rgba(219, 167, 14, 0.35) !important;
-    transition: all 0.2s ease !important;
-    margin: 4px 0 !important;
-}
-.translate-btn:hover, button.primary:hover {
-    background: linear-gradient(135deg, #e8b625 0%, #dba70e 100%) !important;
-    transform: translateY(-2px) !important;
-    box-shadow: 0 6px 22px rgba(219, 167, 14, 0.5) !important;
-}
-
-/* Form component styling */
-textarea, input[type="text"] {
-    background-color: #1a1818 !important;
-    color: #f5f5f5 !important;
-    border-color: rgba(219, 167, 14, 0.3) !important;
-}
-textarea:focus, input[type="text"]:focus {
-    border-color: #dba70e !important;
-    box-shadow: 0 0 0 2px rgba(219, 167, 14, 0.25) !important;
-}
-
-/* Ensure Examples are strictly 3 side-by-side columns */
-.examples-row {
-    display: flex !important;
-    flex-direction: row !important;
-    flex-wrap: nowrap !important;
-    gap: 14px !important;
-    width: 100% !important;
-}
-.examples-row > div {
-    flex: 1 1 0px !important;
-    min-width: 0 !important;
-    width: 32% !important;
-}
-
-.example-btn {
-    background: #383333 !important;
-    color: #f5f5f5 !important;
-    border: 1px solid rgba(219, 167, 14, 0.35) !important;
-    border-radius: 8px !important;
-    font-weight: 600 !important;
-    font-size: 13px !important;
-    margin-top: 8px !important;
-    padding: 8px 10px !important;
-    width: 100% !important;
-    transition: all 0.2s ease !important;
-}
-.example-btn:hover {
-    background: #dba70e !important;
-    color: #221f1f !important;
-    border-color: #dba70e !important;
-    transform: translateY(-1px) !important;
-    box-shadow: 0 4px 12px rgba(219, 167, 14, 0.35) !important;
-}
-
-/* Floating support badge in bottom-right corner */
-.support-badge {
-    position: fixed;
-    bottom: 22px;
-    right: 22px;
-    z-index: 9999;
-    width: 260px;
-    box-sizing: border-box;
-    background-color: rgba(34, 31, 31, 0.92);
-    backdrop-filter: blur(10px);
-    -webkit-backdrop-filter: blur(10px);
-    border: 1px solid rgba(219, 167, 14, 0.45);
-    border-radius: 12px;
-    padding: 10px 14px 12px 14px;
-    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.6);
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 6px;
-    transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
-}
-.support-badge:hover {
-    transform: translateY(-3px);
-    border-color: #dba70e;
-    box-shadow: 0 8px 24px rgba(219, 167, 14, 0.3);
-}
-.support-badge-text {
-    color: #dba70e;
-    font-size: 13.5px;
-    font-weight: 800;
-    text-transform: uppercase;
-    letter-spacing: 1.6px;
-    width: 100%;
-    text-align: center;
-    display: block;
-    margin: 0 0 2px 0;
-}
-.support-badge a {
-    display: block;
-    width: 100%;
-}
-.support-badge-img {
-    width: 100% !important;
-    height: auto !important;
-    display: block;
-    object-fit: contain;
-}
-
-@media (max-width: 600px) {
-    .examples-row {
-        flex-direction: column !important;
-    }
-    .examples-row > div {
-        width: 100% !important;
-    }
-    .support-badge {
-        bottom: 12px;
-        right: 12px;
-        width: 180px;
-        padding: 8px 10px;
-    }
-    .support-badge-text {
-        font-size: 9px;
-        letter-spacing: 1px;
-    }
-}
-"""
-# Custom script injected in <head> to silently suppress transient "Video not playable" popups during upload conversion
-custom_head = """
-<script>
-(function() {
-    // Intercept video error events before Gradio Svelte handler triggers toast
-    window.addEventListener('error', function(e) {
-        if (e.target && (e.target.tagName === 'VIDEO' || e.target.tagName === 'SOURCE')) {
-            e.stopImmediatePropagation();
-            e.preventDefault();
-        }
-    }, true);
-
-    // Auto-dismiss any 'not playable' toast popups that might appear
-    function hidePlayableErrors() {
-        var toasts = document.querySelectorAll('.toast, .toast-wrap, [class*="toast"], .error, [data-testid="error-message"]');
-        toasts.forEach(function(t) {
-            var txt = (t.innerText || t.textContent || '').toLowerCase();
-            if (txt.indexOf('playable') !== -1 || txt.indexOf('not playable') !== -1 || txt.indexOf('video error') !== -1) {
-                t.style.display = 'none';
-            }
-        });
-    }
-
-    var observer = new MutationObserver(function(mutations) {
-        hidePlayableErrors();
-    });
-
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', function() {
-            observer.observe(document.body || document.documentElement, { childList: true, subtree: true });
-        });
-    } else {
-        observer.observe(document.body || document.documentElement, { childList: true, subtree: true });
-    }
-})();
-</script>
-"""
-
-with gr.Blocks(title="Sign Language Translation", css=custom_css, head=custom_head, theme=gr.themes.Default(primary_hue="amber", neutral_hue="neutral")) as app:
+with gr.Blocks(title="Sign Language Translation", css=custom_css, theme=gr.themes.Default(primary_hue="amber", neutral_hue="neutral")) as app:
     
     gr.Markdown("<h1>Sign Language to Text Translation</h1>")
     gr.Markdown("<h3 class='page-subtitle'>Upload an ASL video and get a text translation.</h3>")
     
+    current_video = gr.State("")
+
     with gr.Column(elem_id="main-layout"):
         
-        # Card 1: Upload Video Box
+        # Card 1: Upload Video Box (Compact Dropzone & Info Row)
         with gr.Column(elem_classes=["ui-card"]):
-            gr.Markdown("<h3 class='card-title'>Upload video</h3>")
-            video_input = gr.Video(show_label=False, format="mp4")
+            with gr.Row(elem_classes=["card-header-row"]):
+                with gr.Column(scale=1, min_width=0):
+                    gr.Markdown("<h3 class='card-title'>Upload video</h3>")
+                with gr.Column(scale=0, min_width=160, elem_classes=["record-btn-col"]):
+                    record_yourself_btn = gr.Button(
+                        "📹 RECORD YOURSELF",
+                        variant="secondary",
+                        elem_classes=["record-yourself-btn"],
+                        visible=True,
+                    )
             
-        # Standalone Translate Action Button
-        submit_btn = gr.Button("Translate", variant="primary", elem_classes=["translate-btn"])
+            # Compact file dropzone
+            upload_file = gr.File(
+                label="Upload Video",
+                file_types=["video"],
+                file_count="single",
+                show_label=False,
+                elem_classes=["compact-dropzone"]
+            )
+            
+            # Active video status row: Video name on left, action buttons aligned to the right
+            with gr.Row(visible=False, elem_classes=["video-info-row"]) as video_info_row:
+                video_name_md = gr.Markdown("<div class='video-name-badge'><span>video.mp4</span></div>", elem_classes=["video-name-col"])
+                preview_btn = gr.Button("🎬 Preview & Trim Video", variant="secondary", elem_classes=["preview-modal-btn"])
+                change_video_btn = gr.Button("✕ Remove", variant="secondary", elem_classes=["change-vid-btn"])
+
+        # Standalone Translate Action Button (hidden until a video is uploaded or selected)
+        submit_btn = gr.Button("Translate", variant="primary", elem_classes=["translate-btn"], visible=False)
         
-        # Card 2: Translation Result Box
-        with gr.Column(elem_classes=["ui-card"]):
+        # Card 2: Translation Result Box (hidden until Translate is clicked)
+        with gr.Column(elem_classes=["ui-card", "translation-card"], elem_id="translation-card", visible=False) as translation_card:
             gr.Markdown("<h3 class='card-title'>Translation</h3>")
-            text_output = gr.Textbox(show_label=False, placeholder="Translation will appear here...", lines=3)
+            translation_display = gr.HTML(value="", elem_id="translation-display", elem_classes=["translation-display-html"])
         
         # Card 3: Examples Box (3 videos side-by-side)
         with gr.Column(elem_classes=["ui-card"]):
@@ -393,24 +113,130 @@ with gr.Blocks(title="Sign Language Translation", css=custom_css, head=custom_he
                 with gr.Column(scale=1):
                     gr.Video(value=example_videos[2], interactive=False, show_label=False, autoplay=False, height=160)
                     btn_ex3 = gr.Button("Use Example 3", variant="secondary", elem_classes=["example-btn"])
+
+        # Card 4: Information Box
+        with gr.Column(elem_classes=["ui-card"]):
+            gr.Markdown("<h3 class='card-title'>Information</h3>")
+            gr.HTML("""
+            <div class="info-content">
+                <div class="info-text">
+                    Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.
+                </div>
+                <a href="#" class="advanced-demo-link">
+                    <span class="adv-line adv-line-1">EXPLORE</span>
+                    <span class="adv-line adv-line-2">ADVANCED</span>
+                    <span class="adv-line adv-line-3">⭐DEMO⭐</span>
+                </a>
+            </div>
+            """)
             
+    # Fullscreen Floating Modal Window for Video Preview & Trimming
+    with gr.Column(elem_classes=["modal-overlay"], visible=False) as preview_modal:
+        with gr.Column(elem_classes=["modal-dialog-card"]):
+            with gr.Row(elem_classes=["modal-header-row"]):
+                with gr.Column(scale=1, min_width=0):
+                    gr.Markdown("<h3 class='modal-title'>Video Recording, Preview & Trimming</h3>")
+                with gr.Column(scale=0, min_width=36, elem_classes=["modal-close-col"]):
+                    modal_close_top = gr.Button("✕", size="sm", min_width=36, elem_classes=["modal-close-icon"])
+            
+            modal_video = gr.Video(
+                interactive=True,
+                show_label=False,
+                sources=["webcam", "upload"],
+                elem_classes=["modal-video-player"],
+            )
+            
+            with gr.Row(elem_classes=["modal-footer-row"]):
+                modal_save_btn = gr.Button("✓ Save & Use Video", variant="primary", elem_classes=["modal-done-btn"])
+
+    def start_translating_ui():
+        return gr.update(visible=True), ""
+
+    def finish_translating(video_path):
+        #if not video_path:
+        #    return """<div class="translation-content-box"><div style="color: #ff6b6b; font-weight: 600; font-size: 15px; text-align: center;">Please upload or select a video first.</div></div>"""
+        raw_result = process_video(video_path)
+        clean_result = str(raw_result).strip()
+        #if clean_result.startswith("Error") or "error" in clean_result.lower():
+        #    return f"""<div class="translation-content-box"><div style="color: #ff6b6b; font-weight: 600; font-size: 15px; text-align: center;">{clean_result}</div></div>"""
+        # věřím že není potřeba protože vždy musí být path, a errory budu řešit později
+        return f"""<div class="translation-content-box"><div class="translation-text">{clean_result}</div></div>"""
+
+    # Upload file event
+    upload_file.upload(
+        fn=handle_file_upload,
+        inputs=upload_file,
+        outputs=[current_video, upload_file, record_yourself_btn, video_info_row, video_name_md, submit_btn, translation_card, modal_video],
+    )
+
+    # Remove / Change video event
+    change_video_btn.click(
+        fn=handle_remove_video,
+        inputs=None,
+        outputs=[current_video, upload_file, record_yourself_btn, video_info_row, video_name_md, submit_btn, translation_card, modal_video],
+    )
+
+    # Smooth scroll to top JavaScript helper for example selections
+    scroll_top_js = "() => { window.scrollTo({ top: 0, behavior: 'smooth' }); }"
+
+    # Examples click events with smooth auto-scroll to top
+    btn_ex1.click(
+        fn=lambda: handle_select_example(example_videos[0], "Example 1"),
+        inputs=None,
+        outputs=[current_video, upload_file, record_yourself_btn, video_info_row, video_name_md, submit_btn, translation_card, modal_video],
+        js=scroll_top_js,
+    )
+    btn_ex2.click(
+        fn=lambda: handle_select_example(example_videos[1], "Example 2"),
+        inputs=None,
+        outputs=[current_video, upload_file, record_yourself_btn, video_info_row, video_name_md, submit_btn, translation_card, modal_video],
+        js=scroll_top_js,
+    )
+    btn_ex3.click(
+        fn=lambda: handle_select_example(example_videos[2], "Example 3"),
+        inputs=None,
+        outputs=[current_video, upload_file, record_yourself_btn, video_info_row, video_name_md, submit_btn, translation_card, modal_video],
+        js=scroll_top_js,
+    )
+
+    # Open Modal event from Preview & Trim button
+    preview_btn.click(
+        fn=open_modal,
+        inputs=current_video,
+        outputs=[preview_modal, modal_video],
+    )
+
+    # Open Modal event from Record Yourself button
+    record_yourself_btn.click(
+        fn=open_modal_for_recording,
+        inputs=None,
+        outputs=[preview_modal, modal_video],
+    )
+
+    # Save & Use Video
+    modal_save_btn.click(
+        fn=close_modal_and_save,
+        inputs=[modal_video, current_video],
+        outputs=[preview_modal, current_video, upload_file, record_yourself_btn, video_info_row, video_name_md, submit_btn, translation_card, modal_video],
+    )
+
+    # Close / Cancel Modal event
+    modal_close_top.click(
+        fn=cancel_modal,
+        inputs=current_video,
+        outputs=[preview_modal, current_video, upload_file, record_yourself_btn, video_info_row, video_name_md, submit_btn, translation_card, modal_video],
+    )
+
+    # Translate event
     submit_btn.click(
-        fn=process_video,
-        inputs=video_input,
-        outputs=text_output,
+        fn=start_translating_ui,
+        inputs=None,
+        outputs=[translation_card, translation_display],
+    ).then(
+        fn=finish_translating,
+        inputs=current_video,
+        outputs=translation_display,
     )
-
-    # Automatically transcode any uploaded video (e.g. FMP4/AVI) to web-friendly H.264 on upload
-    video_input.upload(
-        fn=ensure_web_compatible_video,
-        inputs=video_input,
-        outputs=video_input,
-    )
-
-    # Click handlers to load the example video into the main upload box
-    btn_ex1.click(fn=lambda: example_videos[0], inputs=None, outputs=video_input)
-    btn_ex2.click(fn=lambda: example_videos[1], inputs=None, outputs=video_input)
-    btn_ex3.click(fn=lambda: example_videos[2], inputs=None, outputs=video_input)
 
     # Fixed floating badge in bottom-right corner with full-width logo
     gr.HTML(f"""
@@ -424,4 +250,3 @@ with gr.Blocks(title="Sign Language Translation", css=custom_css, head=custom_he
 
 if __name__ == "__main__":
     app.launch()
-
