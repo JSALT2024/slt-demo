@@ -14,6 +14,8 @@ from handle_gradio import (
     close_modal_and_save,
     cancel_modal,
     flip_video_horizontal,
+    open_keypoints_modal,
+    close_keypoints_modal,
 )
 
 # Check and download the 1GB pre-trained model weights if not cached
@@ -121,6 +123,7 @@ The system builds upon the **Uni-Sign** framework. We thank its authors and the 
 with gr.Blocks(title="Sign Language Translation", css=custom_css, theme=gr.themes.Default(primary_hue="amber", neutral_hue="neutral")) as app:
 
     current_video = gr.State("")
+    keypoints_video_state = gr.State("")
 
     with gr.Column(elem_id="main-layout"):
         
@@ -179,6 +182,12 @@ with gr.Blocks(title="Sign Language Translation", css=custom_css, theme=gr.theme
         with gr.Column(elem_classes=["ui-card", "translation-card"], elem_id="translation-card", visible=False) as translation_card:
             gr.Markdown("<h3 class='card-title'>Translation</h3>")
             translation_display = gr.HTML(value="", elem_id="translation-display", elem_classes=["translation-display-html"])
+            show_keypoints_btn = gr.Button(
+                "🎯 SHOW KEYPOINTS",
+                variant="secondary",
+                elem_classes=["show-keypoints-btn"],
+                visible=False,
+            )
         
         # Card 3: Examples Box (6 videos in 3 columns x 2 rows)
         with gr.Column(elem_classes=["ui-card"]):
@@ -237,18 +246,48 @@ with gr.Blocks(title="Sign Language Translation", css=custom_css, theme=gr.theme
                 modal_flip_btn = gr.Button("⇄ Flip Horizontally (Mirror)", variant="secondary", elem_classes=["modal-flip-btn"])
                 modal_save_btn = gr.Button("✓ Save & Use Video", variant="primary", elem_classes=["modal-done-btn"])
 
+    # Fullscreen Floating Modal Window for Keypoints Visualization
+    with gr.Column(elem_classes=["modal-overlay", "keypoints-modal-overlay"], visible=False) as keypoints_modal:
+        with gr.Column(elem_classes=["modal-dialog-card"]):
+            with gr.Row(elem_classes=["modal-header-row"]):
+                with gr.Column(scale=1, min_width=0):
+                    gr.Markdown("<h3 class='modal-title'>🎯 Extracted Pose & Keypoints</h3>")
+                with gr.Column(scale=0, min_width=36, elem_classes=["modal-close-col"]):
+                    keypoints_close_top = gr.Button("✕", size="sm", min_width=36, elem_classes=["modal-close-icon"])
+            
+            keypoints_modal_video = gr.Video(
+                interactive=False,
+                show_label=False,
+                autoplay=True,
+                loop=True,
+                elem_classes=["modal-video-player", "keypoints-video-player"],
+            )
+            
+            with gr.Column(elem_classes=["modal-footer-col"]):
+                keypoints_close_bottom = gr.Button("Close", variant="secondary", elem_classes=["modal-done-btn"])
+
     def start_translating_ui():
         spinner_html = """<div class="translation-content-box"><div class="loading-container"><div class="pulse-spinner"></div></div></div>"""
-        return gr.update(visible=True), spinner_html
+        return gr.update(visible=True), spinner_html, gr.update(visible=False), ""
 
     def finish_translating(video_path):
         if not video_path:
-            return """<div class="translation-content-box"><div style="color: #dba70e; font-weight: 600; font-size: 15px; text-align: center;">Please select or upload a video first.</div></div>"""
-        raw_result = process_video(video_path)
-        clean_result = str(raw_result).strip()
+            err_html = """<div class="translation-content-box"><div style="color: #dba70e; font-weight: 600; font-size: 15px; text-align: center;">Please select or upload a video first.</div></div>"""
+            return err_html, gr.update(visible=False), ""
+        try:
+            trans_result, kp_video = process_video(video_path)
+        except Exception as e:
+            err_html = f"""<div class="translation-content-box"><div style="color: #ff6b6b; font-weight: 600; font-size: 14px; text-align: center;">Error: {e}</div></div>"""
+            return err_html, gr.update(visible=False), ""
+
+        clean_result = str(trans_result).strip()
         if clean_result.startswith("Error") or "error" in clean_result.lower():
-            return f"""<div class="translation-content-box"><div style="color: #ff6b6b; font-weight: 600; font-size: 14px; text-align: center;">{clean_result}</div></div>"""
-        return f"""<div class="translation-content-box"><div class="translation-text">{clean_result}</div></div>"""
+            err_html = f"""<div class="translation-content-box"><div style="color: #ff6b6b; font-weight: 600; font-size: 14px; text-align: center;">{clean_result}</div></div>"""
+            return err_html, gr.update(visible=False), ""
+
+        content_html = f"""<div class="translation-content-box"><div class="translation-text">{clean_result}</div></div>"""
+        has_kp = bool(kp_video and os.path.exists(kp_video))
+        return content_html, gr.update(visible=has_kp), kp_video if has_kp else ""
 
     # Upload file event
     upload_file.upload(
@@ -344,11 +383,30 @@ with gr.Blocks(title="Sign Language Translation", css=custom_css, theme=gr.theme
     submit_btn.click(
         fn=start_translating_ui,
         inputs=None,
-        outputs=[translation_card, translation_display],
+        outputs=[translation_card, translation_display, show_keypoints_btn, keypoints_video_state],
     ).then(
         fn=finish_translating,
         inputs=current_video,
-        outputs=translation_display,
+        outputs=[translation_display, show_keypoints_btn, keypoints_video_state],
+    )
+
+    # Open Keypoints Modal
+    show_keypoints_btn.click(
+        fn=open_keypoints_modal,
+        inputs=keypoints_video_state,
+        outputs=[keypoints_modal, keypoints_modal_video],
+    )
+
+    # Close Keypoints Modal
+    keypoints_close_top.click(
+        fn=close_keypoints_modal,
+        inputs=None,
+        outputs=[keypoints_modal, keypoints_modal_video],
+    )
+    keypoints_close_bottom.click(
+        fn=close_keypoints_modal,
+        inputs=None,
+        outputs=[keypoints_modal, keypoints_modal_video],
     )
 
 

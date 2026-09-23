@@ -168,10 +168,10 @@ def format_video_display_name(video_input, is_webcam: bool = False) -> str:
 def process_video(input_video_path):
     """Prepares and translates an input video using the model backend."""
     if not input_video_path:
-        return "Please upload or select a video first."
+        return "Please upload or select a video first.", ""
     compatible_path = ensure_web_compatible_video(input_video_path)
-    translation = process_input(compatible_path)
-    return translation
+    translation, keypoints_video_path = process_input(compatible_path)
+    return translation, keypoints_video_path
 
 
 # ==============================================================================
@@ -381,3 +381,15 @@ def cancel_modal(curr_vid):
             gr.update(visible=False),                                                 # translation_card
             None,                                                                     # modal_video
         )
+
+
+def open_keypoints_modal(keypoints_video):
+    """Opens the keypoints visualization modal window."""
+    if not keypoints_video or not os.path.exists(keypoints_video):
+        return gr.update(visible=False), None
+    return gr.update(visible=True), keypoints_video
+
+
+def close_keypoints_modal():
+    """Closes the keypoints visualization modal window."""
+    return gr.update(visible=False), None

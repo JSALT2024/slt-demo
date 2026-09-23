@@ -8,6 +8,7 @@ from dotenv import load_dotenv
 from Uni_Sign.models import Uni_Sign
 from Uni_Sign.datasets import load_part_kp_YTASL, YTASL_GROUP_SIZES, _fill_missing_landmarks, select_frame_indices
 from predict_pose import create_mediapipe_models, predict_pose, load_video_cv
+from visualize_pose import render_keypoints_video
 
 os.environ['KMP_DUPLICATE_LIB_OK'] = 'TRUE'
 load_dotenv()
@@ -21,7 +22,7 @@ class InferenceConfig:
     """Configuration class for Uni_Sign model inference."""
     def __init__(self):
         # Path to the pre-trained weights checkpoint
-        self.finetune = os.environ.get("UNISIGN_WEIGHTS", r"./Uni_Sign/unisign_model/-wlasl.pth")
+        self.finetune = os.environ.get("UNISIGN_WEIGHTS", r"./Uni_Sign/unisign_model/best_checkpoint-wlasl.pth")
         self.dataset = "YTASL"
         self.task = "SLT"
         self.max_length = 256
@@ -139,8 +140,30 @@ def process_input(input_video_path):
         initialize_model()
         
         print(f"1. Extracting keypoints from video... [{time.time() - start_time:.2f} s since start]")
-        video_frames, _ = load_video_cv(input_video_path)
+        video_frames, fps = load_video_cv(input_video_path)
         pose_results = predict_pose(video_frames, pose_models)
+
+        # Attach bounding boxes to each frame's keypoints
+        kps_list = pose_results.get("keypoints", [])
+        bbox_face_list = pose_results.get("bbox_face", [])
+        bbox_lh_list = pose_results.get("bbox_left_hand", [])
+        bbox_rh_list = pose_results.get("bbox_right_hand", [])
+
+        for i, kp in enumerate(kps_list):
+            if i < len(bbox_face_list):
+                kp['bbox_face'] = bbox_face_list[i]
+            if i < len(bbox_lh_list):
+                kp['bbox_left_hand'] = bbox_lh_list[i]
+            if i < len(bbox_rh_list):
+                kp['bbox_right_hand'] = bbox_rh_list[i]
+
+        # Render keypoint overlay video
+        keypoints_video_path = ""
+        try:
+            keypoints_video_path = render_keypoints_video(video_frames, kps_list, fps=fps)
+            print(f"Keypoints video successfully created at: {keypoints_video_path}")
+        except Exception as kp_err:
+            print(f"Warning rendering keypoints video: {kp_err}")
         
         print(f"2. Pre-processing visual features... [{time.time() - start_time:.2f} s since start]")
 
@@ -176,10 +199,10 @@ def process_input(input_video_path):
             result = "The model was unable to generate a translation. Please try a different video."
         
         print(f"5. Translation completed! [{time.time() - start_time:.2f} s since start]")
-        return result
+        return result, keypoints_video_path
                 
     except Exception as e:
         print(f"Error during video processing: {e}")
         import traceback
         traceback.print_exc()
-        return f"Error processing video: {str(e)}"
+        return f"Error processing video: {str(e)}", ""

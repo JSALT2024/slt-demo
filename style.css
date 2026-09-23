@@ -1099,3 +1099,40 @@ video,
         width: 100% !important;
     }
 }
+
+/* ==============================================================================
+   11. SHOW KEYPOINTS BUTTON & MODAL
+   ============================================================================== */
+.show-keypoints-btn {
+    background: linear-gradient(135deg, #383333 0%, #2a2626 100%) !important;
+    border: 1.5px solid var(--gold) !important;
+    color: var(--gold) !important;
+    font-weight: 800 !important;
+    font-size: 18px !important;
+    letter-spacing: 0.5px !important;
+    border-radius: 8px !important;
+    height: 48px !important;
+    width: 100% !important;
+    box-shadow: 0 3px 12px rgba(0, 0, 0, 0.4), 0 0 10px var(--gold-border-subtle) !important;
+    transition: all 0.2s ease !important;
+    margin: 14px 0 0 0 !important;
+    cursor: pointer !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+}
+
+.show-keypoints-btn:hover {
+    background: var(--gold) !important;
+    color: #1e1b1b !important;
+    transform: translateY(-1px) !important;
+    box-shadow: 0 5px 18px var(--gold-glow) !important;
+}
+
+.keypoints-video-player video {
+    max-height: 52vh !important;
+    width: 100% !important;
+    object-fit: contain !important;
+    border-radius: 8px !important;
+}
+
