@@ -10,6 +10,9 @@ import shutil
 import gradio as gr
 from backend import process_input
 
+# State to track whether webcam recording mode is actively open in the modal
+_is_recording_mode = False
+
 # ==============================================================================
 # 1. FFMPEG & GRADIO PLAYABILITY SETUP
 # ==============================================================================
@@ -104,11 +107,16 @@ def ensure_web_compatible_video(video_path):
     try:
         import imageio_ffmpeg
         ffmpeg_bin = imageio_ffmpeg.get_ffmpeg_exe()
-        out_dir = os.path.join(tempfile.gettempdir(), "slt_compat_videos")
-        os.makedirs(out_dir, exist_ok=True)
         mtime = int(os.path.getmtime(path_str))
-        base = os.path.splitext(os.path.basename(path_str))[0]
-        out_path = os.path.join(out_dir, f"{base}_{mtime}_h264.mp4")
+        clean_name = os.path.basename(path_str)
+        import re
+        clean_name = re.sub(r'(_flipped(_\d+)?)', '', clean_name)
+        clean_name = re.sub(r'(_\d+_h264)', '', clean_name)
+        base, _ = os.path.splitext(clean_name)
+
+        out_dir = os.path.join(tempfile.gettempdir(), "slt_compat_videos", str(mtime))
+        os.makedirs(out_dir, exist_ok=True)
+        out_path = os.path.join(out_dir, f"{base}.mp4")
 
         if not os.path.exists(out_path) or os.path.getsize(out_path) == 0:
             cmd = [
@@ -133,6 +141,30 @@ def ensure_web_compatible_video(video_path):
     return path_str
 
 
+def is_webcam_video(path_str: str) -> bool:
+    """Determines if the video is from a webcam recording."""
+    if not path_str:
+        return False
+    base = os.path.basename(path_str).lower()
+    return base in ["webkamera.mp4", "input_video.mp4", "input_video.webm"] or base.startswith("webkamera")
+
+
+def format_video_display_name(video_input, is_webcam: bool = False) -> str:
+    """Formats a video filename for UI display, removing temp/flip suffixes and capping at 20 chars max + '...'."""
+    path_str = extract_video_path(video_input)
+    if not path_str:
+        return ""
+    if is_webcam or is_webcam_video(path_str):
+        return "webkamera.mp4"
+    fname = os.path.basename(path_str)
+    import re
+    clean_name = re.sub(r'(_flipped(_\d+)?)', '', fname)
+    clean_name = re.sub(r'(_\d+_h264)', '', clean_name)
+    if len(clean_name) > 20:
+        return clean_name[:20] + "..."
+    return clean_name
+
+
 def process_video(input_video_path):
     """Prepares and translates an input video using the model backend."""
     if not input_video_path:
@@ -148,6 +180,8 @@ def process_video(input_video_path):
 
 def handle_file_upload(file):
     """Handles video file upload, transcoding to H.264 and updating UI state."""
+    global _is_recording_mode
+    _is_recording_mode = False
     if not file:
         return (
             "",                                                          # current_video
@@ -160,13 +194,13 @@ def handle_file_upload(file):
             gr.update(value=None),                                       # modal_video
         )
     compatible = ensure_web_compatible_video(file)
-    fname = os.path.basename(compatible)
+    display_name = format_video_display_name(file if isinstance(file, str) or hasattr(file, 'name') else compatible)
     return (
         compatible,                                                  # current_video
         gr.update(visible=False),                                    # upload_file
         gr.update(visible=False),                                    # record_yourself_btn
         gr.update(visible=True),                                     # video_info_row
-        gr.update(value=f"<div class='video-name-badge'><b>{fname}</b></div>"), # video_name_md
+        gr.update(value=f"<div class='video-name-badge'><b>{display_name}</b></div>"), # video_name_md
         gr.update(visible=True),                                     # submit_btn
         gr.update(visible=False),                                    # translation_card
         gr.update(value=compatible),                                 # modal_video
@@ -175,6 +209,8 @@ def handle_file_upload(file):
 
 def handle_remove_video():
     """Clears the currently active video and resets the upload box."""
+    global _is_recording_mode
+    _is_recording_mode = False
     return (
         "",                                                          # current_video
         gr.update(visible=True, value=None),                         # upload_file
@@ -187,15 +223,17 @@ def handle_remove_video():
     )
 
 
-def handle_select_example(ex_path, ex_label):
+def handle_select_example(ex_path, ex_label=None):
     """Selects an example video, updates the active video badge, and enables translation."""
-    fname = os.path.basename(ex_path)
+    global _is_recording_mode
+    _is_recording_mode = False
+    display_name = format_video_display_name(ex_path)
     return (
         ex_path,                                                     # current_video
         gr.update(visible=False),                                    # upload_file
         gr.update(visible=False),                                    # record_yourself_btn
         gr.update(visible=True),                                     # video_info_row
-        gr.update(value=f"<div class='video-name-badge'><b>{fname}</b> ({ex_label})</div>"), # video_name_md
+        gr.update(value=f"<div class='video-name-badge'><b>{display_name}</b></div>"), # video_name_md
         gr.update(visible=True),                                     # submit_btn
         gr.update(visible=False),                                    # translation_card
         gr.update(value=ex_path),                                    # modal_video
@@ -204,35 +242,102 @@ def handle_select_example(ex_path, ex_label):
 
 def open_modal(curr_vid):
     """Opens the preview & trimming modal with the current video loaded."""
+    global _is_recording_mode
+    _is_recording_mode = False
     return gr.update(visible=True), gr.update(value=curr_vid)
 
 
 def open_modal_for_recording():
     """Opens the preview modal in webcam recording mode."""
+    global _is_recording_mode
+    _is_recording_mode = True
     return gr.update(visible=True), gr.update(value=None)
+
+
+def flip_video_horizontal(video_input):
+    """Flips the video horizontally (mirror effect) using FFmpeg hflip filter."""
+    global _is_recording_mode
+    path_str = extract_video_path(video_input)
+    if not path_str or not os.path.exists(path_str):
+        return video_input
+
+    try:
+        import imageio_ffmpeg
+        ffmpeg_bin = imageio_ffmpeg.get_ffmpeg_exe()
+        import time
+        ts = int(time.time() * 1000)
+
+        if _is_recording_mode or is_webcam_video(path_str):
+            clean_name = "webkamera.mp4"
+        else:
+            clean_name = os.path.basename(path_str)
+            import re
+            clean_name = re.sub(r'(_flipped(_\d+)?)', '', clean_name)
+            clean_name = re.sub(r'(_\d+_h264)', '', clean_name)
+
+        out_dir = os.path.join(tempfile.gettempdir(), "slt_flipped_videos", str(ts))
+        os.makedirs(out_dir, exist_ok=True)
+        out_path = os.path.join(out_dir, clean_name)
+
+        cmd = [
+            ffmpeg_bin, "-y",
+            "-i", path_str,
+            "-vf", "hflip",
+            "-c:v", "libx264",
+            "-preset", "veryfast",
+            "-crf", "22",
+            "-pix_fmt", "yuv420p",
+            "-movflags", "+faststart",
+            out_path
+        ]
+        res = subprocess.run(cmd, capture_output=True, text=True)
+        if res.returncode == 0 and os.path.exists(out_path) and os.path.getsize(out_path) > 0:
+            return out_path
+        else:
+            print(f"FFmpeg hflip warning: {res.stderr}")
+    except Exception as e:
+        print(f"Video flip error: {e}")
+
+    return video_input
 
 
 def close_modal_and_save(mod_vid, curr_vid):
     """Saves recorded or trimmed video from modal, transcoding to H.264 if needed."""
+    global _is_recording_mode
     target_path = extract_video_path(mod_vid)
     if not target_path or not os.path.exists(target_path):
         target_path = extract_video_path(curr_vid)
 
     if target_path and os.path.exists(target_path):
+        is_webcam = _is_recording_mode or (not curr_vid) or is_webcam_video(target_path)
+        _is_recording_mode = False
+
+        if is_webcam:
+            import time
+            out_dir = os.path.join(tempfile.gettempdir(), "slt_webcam_videos", str(int(time.time() * 1000)))
+            os.makedirs(out_dir, exist_ok=True)
+            webcam_path = os.path.join(out_dir, "webkamera.mp4")
+            try:
+                shutil.copyfile(target_path, webcam_path)
+                target_path = webcam_path
+            except Exception:
+                pass
+
         compat_path = ensure_web_compatible_video(target_path)
-        fname = os.path.basename(compat_path)
+        display_name = format_video_display_name(compat_path, is_webcam=is_webcam)
         return (
             gr.update(visible=False),                                                 # preview_modal
             compat_path,                                                              # current_video
             gr.update(visible=False),                                                 # upload_file
             gr.update(visible=False),                                                 # record_yourself_btn
             gr.update(visible=True),                                                  # video_info_row
-            gr.update(value=f"<div class='video-name-badge'><b>{fname}</b></div>"),   # video_name_md
+            gr.update(value=f"<div class='video-name-badge'><b>{display_name}</b></div>"),   # video_name_md
             gr.update(visible=True),                                                  # submit_btn
             gr.update(visible=False),                                                 # translation_card
             compat_path,                                                              # modal_video
         )
     else:
+        _is_recording_mode = False
         return (
             gr.update(visible=False),                                                 # preview_modal
             "",                                                                       # current_video
@@ -248,16 +353,18 @@ def close_modal_and_save(mod_vid, curr_vid):
 
 def cancel_modal(curr_vid):
     """Closes modal without modifying current video."""
+    global _is_recording_mode
+    _is_recording_mode = False
     target_path = extract_video_path(curr_vid)
     if target_path and os.path.exists(target_path):
-        fname = os.path.basename(target_path)
+        display_name = format_video_display_name(target_path)
         return (
             gr.update(visible=False),                                                 # preview_modal
             target_path,                                                              # current_video
             gr.update(visible=False),                                                 # upload_file
             gr.update(visible=False),                                                 # record_yourself_btn
             gr.update(visible=True),                                                  # video_info_row
-            gr.update(value=f"<div class='video-name-badge'><b>{fname}</b></div>"),   # video_name_md
+            gr.update(value=f"<div class='video-name-badge'><b>{display_name}</b></div>"),   # video_name_md
             gr.update(visible=True),                                                  # submit_btn
             gr.update(visible=False),                                                 # translation_card
             target_path,                                                              # modal_video

@@ -13,6 +13,7 @@ from handle_gradio import (
     open_modal_for_recording,
     close_modal_and_save,
     cancel_modal,
+    flip_video_horizontal,
 )
 
 # Check and download the 1GB pre-trained model weights if not cached
@@ -30,30 +31,33 @@ print(f"File successfully loaded at: {model_path}")
 os.environ["UNISIGN_WEIGHTS"] = model_path
 # ====================
 
-# Prepare base64-encoded logos for header badges
-fav_logo_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "fav_zcu_logo.png")
+# Prepare base64-encoded logos for header badges from the 'logo' directory
+logo_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logo")
+
+fav_logo_path = os.path.join(logo_dir, "fav_logo.png")
 fav_logo_src = ""
 if os.path.exists(fav_logo_path):
     with open(fav_logo_path, "rb") as f:
         fav_b64 = base64.b64encode(f.read()).decode("utf-8")
         fav_logo_src = f"data:image/png;base64,{fav_b64}"
 
-zcu_white_logo_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "zcu_logo_white.svg")
-zcu_white_logo_src = ""
-if os.path.exists(zcu_white_logo_path):
-    with open(zcu_white_logo_path, "rb") as f:
-        zcu_white_b64 = base64.b64encode(f.read()).decode("utf-8")
-        zcu_white_logo_src = f"data:image/svg+xml;base64,{zcu_white_b64}"
+zcu_logo_path = os.path.join(logo_dir, "zcu_logo.png")
+zcu_logo_src = ""
+if os.path.exists(zcu_logo_path):
+    with open(zcu_logo_path, "rb") as f:
+        zcu_b64 = base64.b64encode(f.read()).decode("utf-8")
+        zcu_logo_src = f"data:image/png;base64,{zcu_b64}"
 
-# Paths to the 3 example videos (first 3 from wlasl, re-encoded to H.264)
-example_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "examples", "wlasl")
-if not os.path.exists(example_dir):
-    example_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "DELETE", "examples", "wlasl")
+# Paths to the 3 example videos from examples/wlasl_new
+example_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "examples", "displayed")
 
 example_videos = [
     os.path.join(example_dir, "book.mp4"),
-    os.path.join(example_dir, "language.mp4"),
-    os.path.join(example_dir, "window.mp4"),
+    os.path.join(example_dir, "deaf.mp4"),
+    os.path.join(example_dir, "help.mp4"),
+    os.path.join(example_dir, "fine.mp4"),
+    os.path.join(example_dir, "woman.mp4"),
+    os.path.join(example_dir, "no.mp4"),
 ]
 
 # Load CSS from external style.css file
@@ -61,22 +65,8 @@ css_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "style.css")
 with open(css_path, "r", encoding="utf-8") as f:
     custom_css = f.read()
 
-# Load information content from DELETE/slt_demod.md (or slt_demot.md)
-info_path_candidates = [
-    os.path.join(os.path.dirname(os.path.abspath(__file__)), "DELETE", "slt_demod.md"),
-    os.path.join(os.path.dirname(os.path.abspath(__file__)), "DELETE", "slt_demot.md"),
-    os.path.join(os.path.dirname(os.path.abspath(__file__)), "slt_demod.md"),
-    os.path.join(os.path.dirname(os.path.abspath(__file__)), "slt_demot.md"),
-]
-info_markdown = ""
-for p in info_path_candidates:
-    if os.path.exists(p):
-        with open(p, "r", encoding="utf-8") as f:
-            info_markdown = f.read()
-        break
-
-if not info_markdown:
-    info_markdown = """# Sign Language Translation Demo
+# Information text hardcoded from DELETE/slt_demot.md
+INFO_MARKDOWN = """# Sign Language Translation Demo
 
 This interactive demo showcases **automatic sign language translation from video to text**.
 
@@ -127,18 +117,19 @@ The system builds upon the **Uni-Sign** framework. We thank its authors and the 
 """
 
 
+
 with gr.Blocks(title="Sign Language Translation", css=custom_css, theme=gr.themes.Default(primary_hue="amber", neutral_hue="neutral")) as app:
     
     current_video = gr.State("")
 
     with gr.Column(elem_id="main-layout"):
         
-        # App Header Row: Left Badge (ZČU White Logo), Title & Subtitle, Right Badge (FAV ZČU Logo)
+        # App Header Row: Left Badge (ZČU Logo), Title & Subtitle, Right Badge (FAV ZČU Logo)
         gr.HTML(f"""
         <div class="app-header-container">
             <div class="header-badge header-badge-left">
                 <a href="https://www.zcu.cz" target="_blank" rel="noopener noreferrer" title="Západočeská univerzita v Plzni">
-                    <img src="{zcu_white_logo_src}" alt="Západočeská univerzita v Plzni" class="header-badge-img" />
+                    <img src="{zcu_logo_src}" alt="Západočeská univerzita v Plzni" class="header-badge-img" />
                 </a>
             </div>
             <div class="header-titles">
@@ -189,7 +180,7 @@ with gr.Blocks(title="Sign Language Translation", css=custom_css, theme=gr.theme
             gr.Markdown("<h3 class='card-title'>Translation</h3>")
             translation_display = gr.HTML(value="", elem_id="translation-display", elem_classes=["translation-display-html"])
         
-        # Card 3: Examples Box (3 videos side-by-side)
+        # Card 3: Examples Box (6 videos in 3 columns x 2 rows)
         with gr.Column(elem_classes=["ui-card"]):
             gr.Markdown("<h3 class='card-title'>Examples</h3>")
             with gr.Row(elem_classes=["examples-row"]):
@@ -198,18 +189,32 @@ with gr.Blocks(title="Sign Language Translation", css=custom_css, theme=gr.theme
                     gr.Video(value=example_videos[0], interactive=False, show_label=False, autoplay=False, height=160, mirror_webcam=False)
                     btn_ex1 = gr.Button("Use Example 1", variant="secondary", elem_classes=["example-btn"])
                 with gr.Column(scale=1):
-                    gr.HTML("<div class='example-title'>Language</div>")
+                    gr.HTML("<div class='example-title'>Deaf</div>")
                     gr.Video(value=example_videos[1], interactive=False, show_label=False, autoplay=False, height=160, mirror_webcam=False)
                     btn_ex2 = gr.Button("Use Example 2", variant="secondary", elem_classes=["example-btn"])
                 with gr.Column(scale=1):
-                    gr.HTML("<div class='example-title'>Window</div>")
+                    gr.HTML("<div class='example-title'>Help</div>")
                     gr.Video(value=example_videos[2], interactive=False, show_label=False, autoplay=False, height=160, mirror_webcam=False)
                     btn_ex3 = gr.Button("Use Example 3", variant="secondary", elem_classes=["example-btn"])
+            
+            with gr.Row(elem_classes=["examples-row", "examples-row-second"]):
+                with gr.Column(scale=1):
+                    gr.HTML("<div class='example-title'>Fine</div>")
+                    gr.Video(value=example_videos[3], interactive=False, show_label=False, autoplay=False, height=160, mirror_webcam=False)
+                    btn_ex4 = gr.Button("Use Example 4", variant="secondary", elem_classes=["example-btn"])
+                with gr.Column(scale=1):
+                    gr.HTML("<div class='example-title'>Woman</div>")
+                    gr.Video(value=example_videos[4], interactive=False, show_label=False, autoplay=False, height=160, mirror_webcam=False)
+                    btn_ex5 = gr.Button("Use Example 5", variant="secondary", elem_classes=["example-btn"])
+                with gr.Column(scale=1):
+                    gr.HTML("<div class='example-title'>No</div>")
+                    gr.Video(value=example_videos[5], interactive=False, show_label=False, autoplay=False, height=160, mirror_webcam=False)
+                    btn_ex6 = gr.Button("Use Example 6", variant="secondary", elem_classes=["example-btn"])
 
         # Card 4: Information Box
         with gr.Column(elem_classes=["ui-card"]):
             gr.Markdown("<h3 class='card-title'>Information</h3>")
-            gr.Markdown(info_markdown, elem_classes=["info-markdown"])
+            gr.Markdown(INFO_MARKDOWN, elem_classes=["info-markdown"])
             
     # Fullscreen Floating Modal Window for Video Preview & Trimming
     with gr.Column(elem_classes=["modal-overlay"], visible=False) as preview_modal:
@@ -224,11 +229,12 @@ with gr.Blocks(title="Sign Language Translation", css=custom_css, theme=gr.theme
                 interactive=True,
                 show_label=False,
                 sources=["upload", "webcam"],
-                mirror_webcam=False,
+                mirror_webcam=True,
                 elem_classes=["modal-video-player"],
             )
             
-            with gr.Row(elem_classes=["modal-footer-row"]):
+            with gr.Column(elem_classes=["modal-footer-col"]):
+                modal_flip_btn = gr.Button("⇄ Flip Horizontally (Mirror)", variant="secondary", elem_classes=["modal-flip-btn"])
                 modal_save_btn = gr.Button("✓ Save & Use Video", variant="primary", elem_classes=["modal-done-btn"])
 
     def start_translating_ui():
@@ -263,19 +269,37 @@ with gr.Blocks(title="Sign Language Translation", css=custom_css, theme=gr.theme
 
     # Examples click events with smooth auto-scroll to top
     btn_ex1.click(
-        fn=lambda: handle_select_example(example_videos[0], "Book"),
+        fn=lambda: handle_select_example(example_videos[0]),
         inputs=None,
         outputs=[current_video, upload_file, record_yourself_btn, video_info_row, video_name_md, submit_btn, translation_card, modal_video],
         js=scroll_top_js,
     )
     btn_ex2.click(
-        fn=lambda: handle_select_example(example_videos[1], "Language"),
+        fn=lambda: handle_select_example(example_videos[1]),
         inputs=None,
         outputs=[current_video, upload_file, record_yourself_btn, video_info_row, video_name_md, submit_btn, translation_card, modal_video],
         js=scroll_top_js,
     )
     btn_ex3.click(
-        fn=lambda: handle_select_example(example_videos[2], "Window"),
+        fn=lambda: handle_select_example(example_videos[2]),
+        inputs=None,
+        outputs=[current_video, upload_file, record_yourself_btn, video_info_row, video_name_md, submit_btn, translation_card, modal_video],
+        js=scroll_top_js,
+    )
+    btn_ex4.click(
+        fn=lambda: handle_select_example(example_videos[3]),
+        inputs=None,
+        outputs=[current_video, upload_file, record_yourself_btn, video_info_row, video_name_md, submit_btn, translation_card, modal_video],
+        js=scroll_top_js,
+    )
+    btn_ex5.click(
+        fn=lambda: handle_select_example(example_videos[4]),
+        inputs=None,
+        outputs=[current_video, upload_file, record_yourself_btn, video_info_row, video_name_md, submit_btn, translation_card, modal_video],
+        js=scroll_top_js,
+    )
+    btn_ex6.click(
+        fn=lambda: handle_select_example(example_videos[5]),
         inputs=None,
         outputs=[current_video, upload_file, record_yourself_btn, video_info_row, video_name_md, submit_btn, translation_card, modal_video],
         js=scroll_top_js,
@@ -293,6 +317,13 @@ with gr.Blocks(title="Sign Language Translation", css=custom_css, theme=gr.theme
         fn=open_modal_for_recording,
         inputs=None,
         outputs=[preview_modal, modal_video],
+    )
+
+    # Flip / Mirror video horizontally
+    modal_flip_btn.click(
+        fn=flip_video_horizontal,
+        inputs=modal_video,
+        outputs=modal_video,
     )
 
     # Save & Use Video

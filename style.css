@@ -193,6 +193,19 @@ h3, .card-title {
     margin-top: 0;
 }
 
+.examples-row-second {
+    margin-top: 14px !important;
+}
+
+.examples-row,
+.examples-row *,
+.examples-row video,
+.examples-row .wrap,
+.examples-row .mirror-wrap,
+.examples-row .mirror {
+    transform: none !important;
+}
+
 .examples-row > div {
     min-width: 0 !important;
     gap: 6px !important;
@@ -725,22 +738,26 @@ input[type="file"] {
 }
 
 .modal-video-player video {
-    max-height: 48vh !important;
+    max-height: 38vh !important;
     width: 100% !important;
     object-fit: contain !important;
     border-radius: 8px !important;
 }
 
-/* Prevent any mirroring/horizontal flipping across all video players */
-.mirror,
-.mirror-wrap,
-.mirror-wrap.mirror,
-.modal-video-player .mirror,
-.modal-video-player video,
-video {
+/* Normal video playback: strictly no flip across all video players */
+video,
+.modal-video-player video {
     transform: none !important;
 }
 
+/* Mirror ONLY the live webcam stream during recording */
+.modal-video-player [data-testid="webcam"] video,
+.modal-video-player .record video,
+.modal-video-player video:not([src]) {
+    transform: scaleX(-1) !important;
+}
+
+/* Source selection container (Upload / Webcam) in modal */
 .modal-video-player [data-testid="source-select"],
 .modal-video-player .source-selection,
 .modal-video-player .sources,
@@ -748,19 +765,213 @@ video {
     display: flex !important;
     align-items: center !important;
     justify-content: center !important;
-    gap: 16px !important;
-    padding: 8px 12px !important;
-    margin-top: 6px !important;
+    gap: 20px !important;
+    padding: 8px 16px !important;
+    height: auto !important;
+    min-height: 50px !important;
+    margin-top: 8px !important;
     background-color: var(--bg-surface) !important;
     border-radius: 8px !important;
     border: 1px solid var(--gold-border-subtle) !important;
+    overflow: visible !important;
+    box-sizing: border-box !important;
 }
 
+/* Source selection buttons (Upload / Webcam) */
+.modal-video-player [data-testid="source-select"] button,
+.modal-video-player .source-selection button,
+.modal-video-player .source-selection .icon {
+    width: 44px !important;
+    height: 44px !important;
+    min-width: 44px !important;
+    min-height: 44px !important;
+    padding: 8px !important;
+    margin: 0 !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    background: rgba(255, 255, 255, 0.05) !important;
+    border: 1px solid rgba(255, 255, 255, 0.15) !important;
+    border-radius: 8px !important;
+    cursor: pointer !important;
+    overflow: visible !important;
+    box-sizing: border-box !important;
+    color: #ded7d7 !important;
+    transition: all 0.2s ease !important;
+}
+
+.modal-video-player [data-testid="source-select"] button:hover,
+.modal-video-player .source-selection button:hover,
+.modal-video-player .source-selection .icon:hover,
+.modal-video-player .source-selection .selected,
+.modal-video-player [data-testid="source-select"] button.selected {
+    color: var(--gold) !important;
+    border-color: var(--gold) !important;
+    background-color: rgba(219, 167, 14, 0.2) !important;
+    transform: translateY(-1px) !important;
+}
+
+.modal-video-player [data-testid="source-select"] svg,
+.modal-video-player .source-selection svg,
+.modal-video-player .source-selection .icon svg {
+    width: 24px !important;
+    height: 24px !important;
+    min-width: 24px !important;
+    min-height: 24px !important;
+    max-width: 24px !important;
+    max-height: 24px !important;
+    display: block !important;
+    overflow: visible !important;
+}
+
+/* Video action toolbar (Trim icon, Clear icon, etc.) */
+.modal-video-player [data-testid="modify-upload"],
+.modal-video-player .modify-upload {
+    opacity: 1 !important;
+    visibility: visible !important;
+    z-index: 20 !important;
+}
+
+.modal-video-player [data-testid="modify-upload"] button,
+.modal-video-player .modify-upload button {
+    width: 34px !important;
+    height: 34px !important;
+    min-width: 34px !important;
+    min-height: 34px !important;
+    padding: 6px !important;
+    border-radius: 6px !important;
+    background-color: rgba(38, 34, 34, 0.9) !important;
+    border: 1.5px solid var(--gold) !important;
+    color: var(--gold) !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    cursor: pointer !important;
+    transition: all 0.2s ease !important;
+}
+
+.modal-video-player [data-testid="modify-upload"] button:hover,
+.modal-video-player .modify-upload button:hover {
+    background-color: var(--gold) !important;
+    color: #221f1f !important;
+    transform: scale(1.08) !important;
+}
+
+/* Trimming Timeline & Controls */
+.modal-video-player .timeline-wrapper {
+    width: 100% !important;
+    margin: 10px 0 !important;
+    overflow: visible !important;
+    position: relative !important;
+    z-index: 5 !important;
+}
+
+.modal-video-player [data-testid="waveform-controls"],
+.modal-video-player .container:not(.hidden) .controls {
+    position: static !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+    display: flex !important;
+    justify-content: space-between !important;
+    align-items: center !important;
+    width: 100% !important;
+    padding: 8px 14px !important;
+    margin: 8px 0 !important;
+    background-color: var(--bg-surface) !important;
+    border: 1px solid var(--gold-border-subtle) !important;
+    border-radius: 8px !important;
+    overflow: visible !important;
+    box-sizing: border-box !important;
+    z-index: 5 !important;
+}
+
+.modal-video-player [data-testid="waveform-controls"] time,
+.modal-video-player .controls time {
+    color: var(--gold) !important;
+    font-size: 14px !important;
+    font-weight: 700 !important;
+    font-family: monospace !important;
+}
+
+.modal-video-player .edit-buttons {
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    gap: 10px !important;
+    margin: 0 !important;
+    overflow: visible !important;
+}
+
+/* Trim and Cancel buttons in trimming bar */
+.modal-video-player .edit-buttons .text-button,
+.modal-video-player .edit-buttons button {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    min-height: 36px !important;
+    height: 36px !important;
+    padding: 6px 18px !important;
+    font-size: 13.5px !important;
+    font-weight: 700 !important;
+    border-radius: 6px !important;
+    cursor: pointer !important;
+    transition: all 0.2s ease !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+    box-sizing: border-box !important;
+    line-height: normal !important;
+    width: auto !important;
+    margin: 0 !important;
+}
+
+/* Trim button */
+.modal-video-player .edit-buttons button:first-child,
+.modal-video-player .edit-buttons .text-button:first-child {
+    background-color: var(--gold) !important;
+    color: #221f1f !important;
+    border: 1.5px solid var(--gold) !important;
+    box-shadow: 0 2px 8px var(--gold-glow) !important;
+}
+
+.modal-video-player .edit-buttons button:first-child:hover,
+.modal-video-player .edit-buttons .text-button:first-child:hover {
+    background-color: var(--gold-hover) !important;
+    border-color: var(--gold-hover) !important;
+    transform: translateY(-1px) !important;
+}
+
+/* Cancel trim button */
+.modal-video-player .edit-buttons button:last-child,
+.modal-video-player .edit-buttons .text-button:last-child {
+    background-color: rgba(255, 255, 255, 0.08) !important;
+    color: #ded7d7 !important;
+    border: 1.5px solid rgba(255, 255, 255, 0.25) !important;
+}
+
+.modal-video-player .edit-buttons button:last-child:hover,
+.modal-video-player .edit-buttons .text-button:last-child:hover {
+    background-color: rgba(255, 255, 255, 0.16) !important;
+    color: #ffffff !important;
+    border-color: #ffffff !important;
+    transform: translateY(-1px) !important;
+}
+
+.modal-footer-col,
 .modal-footer-row {
     width: 100% !important;
-    margin-top: 16px !important;
+    margin-top: 14px !important;
     display: flex !important;
-    justify-content: center !important;
+    flex-direction: column !important;
+    gap: 10px !important;
+    align-items: stretch !important;
+}
+
+.modal-footer-col button,
+.modal-footer-row button,
+.modal-flip-btn,
+.modal-done-btn {
+    width: 100% !important;
+    box-sizing: border-box !important;
 }
 
 /* ==============================================================================
@@ -822,16 +1033,16 @@ video {
 
 /* Gold Box Badges Aligned to the Content Left & Right */
 .header-badge {
-    flex: 0 0 148px !important;
-    width: 148px !important;
-    height: 54px !important;
+    flex: 0 0 auto !important;
+    width: auto !important;
+    height: auto !important;
     box-sizing: border-box !important;
     background-color: var(--bg-card) !important;
     border: 1.5px solid var(--gold) !important;
     border-radius: 8px !important;
-    padding: 6px 12px !important;
+    padding: 4px 6px 4px 6px !important;
     box-shadow: 0 3px 10px rgba(0, 0, 0, 0.45), 0 0 6px var(--gold-border-subtle) !important;
-    display: flex !important;
+    display: inline-flex !important;
     align-items: center !important;
     justify-content: center !important;
     transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease !important;
@@ -847,18 +1058,21 @@ video {
     display: flex !important;
     align-items: center !important;
     justify-content: center !important;
-    width: 100% !important;
-    height: 100% !important;
+    width: auto !important;
+    height: auto !important;
     text-decoration: none !important;
+    line-height: 0 !important;
 }
 
 .header-badge-img {
-    max-height: 38px !important;
+    height: 44px !important;
+    max-height: 44px !important;
     max-width: 100% !important;
     width: auto !important;
-    height: auto !important;
     display: block !important;
     object-fit: contain !important;
+    padding: 2px 4px 2px 4px !important;
+    margin: 0 !important;
 }
 
 @media (max-width: 650px) {
