@@ -120,6 +120,9 @@ The system builds upon the **Uni-Sign** framework. We thank its authors and the 
 
 with gr.Blocks(title="Sign Language Translation", css=custom_css, theme=gr.themes.Default(primary_hue="amber", neutral_hue="neutral")) as app:
     
+    gr.Markdown("<h1>Sign Language to Text Translation</h1>")
+    gr.Markdown("<h3 class='page-subtitle'>Upload an ASL video and get a text translation.</h3>")
+    
     current_video = gr.State("")
 
     with gr.Column(elem_id="main-layout"):
@@ -146,7 +149,7 @@ with gr.Blocks(title="Sign Language Translation", css=custom_css, theme=gr.theme
 
         # Card 1: Upload Video Box (Compact Dropzone & Info Row)
         with gr.Column(elem_classes=["ui-card"]):
-            with gr.Row(elem_classes=["card-header-row"]):
+            with gr.Row():
                 with gr.Column(scale=1, min_width=0):
                     gr.Markdown("<h3 class='card-title'>Upload video</h3>")
                 with gr.Column(scale=0, min_width=160, elem_classes=["record-btn-col"]):
