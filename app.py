@@ -119,10 +119,7 @@ The system builds upon the **Uni-Sign** framework. We thank its authors and the 
 
 
 with gr.Blocks(title="Sign Language Translation", css=custom_css, theme=gr.themes.Default(primary_hue="amber", neutral_hue="neutral")) as app:
-    
-    gr.Markdown("<h1>Sign Language to Text Translation</h1>")
-    gr.Markdown("<h3 class='page-subtitle'>Upload an ASL video and get a text translation.</h3>")
-    
+
     current_video = gr.State("")
 
     with gr.Column(elem_id="main-layout"):
