@@ -1,8 +1,27 @@
 import os
+import sys
 import time
 import torch
 import numpy as np
 from dotenv import load_dotenv
+
+if hasattr(sys.stdout, 'reconfigure'):
+    try:
+        sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+    except Exception:
+        pass
+
+
+def format_log(text: str, start_time: float = None, target_col: int = 64) -> str:
+    """Formats a log message with tabulators aligning timestamps in a clean column."""
+    if start_time is not None:
+        elapsed = time.time() - start_time
+        time_str = f"[{elapsed:6.2f} s since start]"
+    else:
+        time_str = ""
+    num_tabs = max(1, (target_col - len(text) + 7) // 8)
+    tabs = "\t" * num_tabs
+    return f"{text}{tabs}{time_str}"
 
 # Import the translation model and helper functions from Uni_Sign
 from Uni_Sign.models import Uni_Sign
@@ -128,7 +147,7 @@ def process_pose_data_in_memory(pose_results, args):
     return src_input
 
 
-def process_input(input_video_path):
+def process_input(input_video_path, progress=None):
     """
     Main entry point for Gradio. Runs pose extraction, pre-processing, 
     and model translation inference via Uni_Sign.
@@ -136,15 +155,29 @@ def process_input(input_video_path):
     try:
         start_time = time.time()
         
-        print("0. Initializing models...")
+        print(format_log("0. Initializing models...", start_time))
+        if progress is not None:
+            try:
+                progress(0.02, desc="0. Inicializace modelů...")
+            except Exception:
+                pass
         initialize_model()
         
-        print(f"1. Extracting keypoints from video... [{time.time() - start_time:.2f} s since start]")
+        print(format_log("1. Extracting keypoints from video...", start_time))
+        if progress is not None:
+            try:
+                progress(0.05, desc="[1a] Načítání videa...")
+            except Exception:
+                pass
         video_frames, fps = load_video_cv(input_video_path)
         if fps is None or fps <= 0 or np.isnan(fps):
             fps = 25.0
 
-        pose_results = predict_pose(video_frames, pose_models)
+        num_frames = len(video_frames)
+        dur = num_frames / fps if fps > 0 else 0
+        print(format_log(f"   [1a] Video načteno: {num_frames} snímků ({fps:.1f} FPS, délka {dur:.1f} s)", start_time))
+
+        pose_results = predict_pose(video_frames, pose_models, progress=progress, start_time=start_time)
 
         # Attach bounding boxes to each frame's keypoints
         kps_list = pose_results.get("keypoints", [])
@@ -163,14 +196,24 @@ def process_input(input_video_path):
         # Render keypoint overlay video
         keypoints_video_path = ""
         try:
-            keypoints_video_path = render_keypoints_video(video_frames, kps_list, fps=fps)
-            print(f"Keypoints video successfully created at: {keypoints_video_path}")
+            keypoints_video_path = render_keypoints_video(video_frames, kps_list, fps=fps, progress=progress, start_time=start_time)
+            print(format_log("   [1e] Video s keypointy úspěšně uloženo", start_time))
         except Exception as kp_err:
-            print(f"Warning rendering keypoints video: {kp_err}")
+            print(format_log(f"   [1e] Warning rendering keypoints video: {kp_err}", start_time))
         
-        print(f"2. Pre-processing visual features... [{time.time() - start_time:.2f} s since start]")
+        print(format_log("2. Pre-processing visual features...", start_time))
+        if progress is not None:
+            try:
+                progress(0.91, desc="2. Zpracování vizuálních příznaků...")
+            except Exception:
+                pass
 
-        print(f"3. Converting keypoints to Tensors for Uni_Sign... [{time.time() - start_time:.2f} s since start]")
+        print(format_log("3. Converting keypoints to Tensors for Uni_Sign...", start_time))
+        if progress is not None:
+            try:
+                progress(0.93, desc="3. Příprava tenzorů pro model...")
+            except Exception:
+                pass
         src_input = process_pose_data_in_memory(pose_results, args)
         
         # Move Tensors to the same device (GPU/CPU) as the model
@@ -185,7 +228,12 @@ def process_input(input_video_path):
                     
         tgt_input = {'gt_sentence': [""], 'gt_gloss': [""]}
         
-        print(f"4. Generating translation... [{time.time() - start_time:.2f} s since start]")
+        print(format_log("4. Generating translation...", start_time))
+        if progress is not None:
+            try:
+                progress(0.96, desc="4. Generování překladu...")
+            except Exception:
+                pass
         with torch.no_grad():
             stack_out = model(src_input, tgt_input)
             output = model.generate(
@@ -201,7 +249,12 @@ def process_input(input_video_path):
         if not result:
             result = "The model was unable to generate a translation. Please try a different video."
         
-        print(f"5. Translation completed! [{time.time() - start_time:.2f} s since start]")
+        if progress is not None:
+            try:
+                progress(1.0, desc="5. Překlad dokončen!")
+            except Exception:
+                pass
+        print(format_log("5. Translation completed!", start_time))
         return result, keypoints_video_path
                 
     except Exception as e:

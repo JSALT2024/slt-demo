@@ -178,12 +178,12 @@ def format_video_display_name(video_input, is_webcam: bool = False) -> str:
     return clean_name
 
 
-def process_video(input_video_path):
+def process_video(input_video_path, progress=None):
     """Prepares and translates an input video using the model backend."""
     if not input_video_path:
         return "Please upload or select a video first.", ""
     compatible_path = ensure_web_compatible_video(input_video_path)
-    translation, keypoints_video_path = process_input(compatible_path)
+    translation, keypoints_video_path = process_input(compatible_path, progress=progress)
     return translation, keypoints_video_path
 
 

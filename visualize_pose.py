@@ -286,11 +286,25 @@ def draw_keypoints_frame(
 # 3. VIDEO RENDERER & HIGH-DEFINITION H.264 ENCODING
 # ==============================================================================
 
+def format_log(text: str, start_time: float = None, target_col: int = 64) -> str:
+    """Formats a log message with tabulators aligning timestamps in a clean column."""
+    if start_time is not None:
+        elapsed = time.time() - start_time
+        time_str = f"[{elapsed:6.2f} s since start]"
+    else:
+        time_str = ""
+    num_tabs = max(1, (target_col - len(text) + 7) // 8)
+    tabs = "\t" * num_tabs
+    return f"{text}{tabs}{time_str}"
+
+
 def render_keypoints_video(
     video_frames: list,
     keypoints_list: list,
     fps: float = 25.0,
     target_height: int = 1080,
+    progress=None,
+    start_time=None,
     **render_kwargs
 ) -> str:
     """
@@ -302,6 +316,8 @@ def render_keypoints_video(
         keypoints_list (list): List of dictionary objects containing per-frame landmarks.
         fps (float): Frame rate of the source video.
         target_height (int): Target vertical resolution (default 1080p).
+        progress: Optional Gradio progress tracker.
+        start_time: Optional start timestamp for alignment logging.
         **render_kwargs: Optional color, opacity, and thickness parameters passed to draw_keypoints_frame.
 
     Returns:
@@ -311,6 +327,10 @@ def render_keypoints_video(
         return ""
 
     try:
+        total_render_frames = len(video_frames)
+        t_render = time.time()
+        print(format_log(f"   [1e] Vykreslování videa s keypointy ({total_render_frames} snímků)...", start_time))
+
         orig_h, orig_w = video_frames[0].shape[:2]
         if fps is None or fps <= 0:
             fps = 25.0
@@ -371,7 +391,7 @@ def render_keypoints_video(
             ]
 
             proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            for frame, kps in zip(video_frames, keypoints_list):
+            for frame_idx, (frame, kps) in enumerate(zip(video_frames, keypoints_list)):
                 drawn = draw_keypoints_frame(
                     frame=frame,
                     kps=kps,
@@ -380,8 +400,17 @@ def render_keypoints_video(
                     **render_kwargs
                 )
                 proc.stdin.write(drawn.tobytes())
+                if (frame_idx + 1) % 30 == 0 or (frame_idx + 1) == total_render_frames:
+                    pct = int(((frame_idx + 1) / total_render_frames) * 100)
+                    print(format_log(f"      [1e] Vykreslování: {frame_idx + 1}/{total_render_frames} snímků ({pct} %)", start_time))
+                    if progress is not None:
+                        try:
+                            progress(0.75 + 0.15 * ((frame_idx + 1) / total_render_frames), desc=f"[1e] Vykreslování videa: {frame_idx + 1}/{total_render_frames} ({pct}%)")
+                        except Exception:
+                            pass
             proc.stdin.close()
             proc.wait()
+            print(format_log("   [1e] Vykreslování dokončeno", start_time))
         else:
             # Fallback to OpenCV VideoWriter if ffmpeg is completely absent
             fourcc = cv2.VideoWriter_fourcc(*'avc1')
@@ -389,7 +418,7 @@ def render_keypoints_video(
             if not writer.isOpened():
                 fourcc = cv2.VideoWriter_fourcc(*'mp4v')
                 writer = cv2.VideoWriter(out_path, fourcc, float(fps), (out_w, out_h))
-            for frame, kps in zip(video_frames, keypoints_list):
+            for frame_idx, (frame, kps) in enumerate(zip(video_frames, keypoints_list)):
                 drawn = draw_keypoints_frame(
                     frame=frame,
                     kps=kps,
@@ -398,10 +427,18 @@ def render_keypoints_video(
                     **render_kwargs
                 )
                 writer.write(cv2.cvtColor(drawn, cv2.COLOR_RGB2BGR))
+                if (frame_idx + 1) % 30 == 0 or (frame_idx + 1) == total_render_frames:
+                    pct = int(((frame_idx + 1) / total_render_frames) * 100)
+                    print(format_log(f"      [1e] Vykreslování: {frame_idx + 1}/{total_render_frames} snímků ({pct} %)", start_time))
+                    if progress is not None:
+                        try:
+                            progress(0.75 + 0.15 * ((frame_idx + 1) / total_render_frames), desc=f"[1e] Vykreslování videa: {frame_idx + 1}/{total_render_frames} ({pct}%)")
+                        except Exception:
+                            pass
             writer.release()
+            print(format_log("   [1e] Vykreslování dokončeno", start_time))
 
         if os.path.exists(out_path) and os.path.getsize(out_path) > 0:
-            print(f"Rendered crisp 1080p keypoints video: {out_w}x{out_h} at {out_path}")
             return out_path
     except Exception as e:
         print(f"Error rendering keypoints video: {e}")

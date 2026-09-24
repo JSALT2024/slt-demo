@@ -1,4 +1,5 @@
 import os
+import time
 import tempfile
 import subprocess
 from copy import deepcopy
@@ -349,7 +350,19 @@ def process_hands(mp_hand_keypoints, mp_handedness, pose_keypoints, image_size: 
     return out
 
 
-def predict_pose(video: List[np.ndarray], models: tuple, sign_space=4, yolo_sign_space=4) -> dict:
+def format_log(text: str, start_time: float = None, target_col: int = 64) -> str:
+    """Formats a log message with tabulators aligning timestamps in a clean column."""
+    if start_time is not None:
+        elapsed = time.time() - start_time
+        time_str = f"[{elapsed:6.2f} s since start]"
+    else:
+        time_str = ""
+    num_tabs = max(1, (target_col - len(text) + 7) // 8)
+    tabs = "\t" * num_tabs
+    return f"{text}{tabs}{time_str}"
+
+
+def predict_pose(video: List[np.ndarray], models: tuple, sign_space=4, yolo_sign_space=4, progress=None, start_time=None) -> dict:
     """
     Extracts keypoints and cropped regional structures from video frames.
     
@@ -359,6 +372,7 @@ def predict_pose(video: List[np.ndarray], models: tuple, sign_space=4, yolo_sign
     4. Crops face and hand boxes (DINO crops) for visual translation features.
     """
     hand_detector, pose_detector, face_detector, yolo_model = models
+    total_imgs = len(video)
     results = {
         "images": video,
         "keypoints": [],
@@ -374,12 +388,23 @@ def predict_pose(video: List[np.ndarray], models: tuple, sign_space=4, yolo_sign
     }
 
     # Step 1: Run YOLO detector across frames to determine primary human center
+    t_yolo = time.time()
+    print(format_log(f"   [1b] YOLO detekce postavy ({total_imgs} snímků)...", start_time))
     yolo_predictions = []
     num_predictions = []
     for idx, image in enumerate(results["images"]):
         bboxes, keypoints, confs = yolo_predict(image, yolo_model)
         yolo_predictions.append([bboxes, keypoints, confs])
         num_predictions.append(len(bboxes))
+        if (idx + 1) % 25 == 0 or (idx + 1) == total_imgs:
+            pct = int(((idx + 1) / total_imgs) * 100)
+            print(format_log(f"      [1b] YOLO: {idx + 1}/{total_imgs} snímků ({pct} %)", start_time))
+            if progress is not None:
+                try:
+                    progress(0.05 + 0.15 * ((idx + 1) / total_imgs), desc=f"[1b] YOLO detekce: {idx + 1}/{total_imgs} ({pct}%)")
+                except Exception:
+                    pass
+    print(format_log("   [1b] YOLO detekce dokončena", start_time))
         
     # Return zeroed outputs if no human subject is detected in any frames
     if np.sum(num_predictions) == 0:
@@ -422,6 +447,8 @@ def predict_pose(video: List[np.ndarray], models: tuple, sign_space=4, yolo_sign
         y1y = max(y0y + 1, min(ih, int(np.round(np.median(y1)))))
 
     # Step 2: Extract fine-grained landmarks using MediaPipe inside the YOLO crop region
+    t_mp = time.time()
+    print(format_log(f"   [1c] MediaPipe extrakce bodů ({total_imgs} snímků)...", start_time))
     mp_keypoints_list = []
     x0, y0, x1, y1 = [], [], [], []
     for idx, image in enumerate(results["images"]):
@@ -492,6 +519,18 @@ def predict_pose(video: List[np.ndarray], models: tuple, sign_space=4, yolo_sign
 
         mp_keypoints_list.append(keypoints)
 
+        if (idx + 1) % 15 == 0 or (idx + 1) == total_imgs:
+            pct = int(((idx + 1) / total_imgs) * 100)
+            elapsed = time.time() - t_mp
+            fps_speed = (idx + 1) / elapsed if elapsed > 0 else 0
+            print(format_log(f"      [1c] MediaPipe: {idx + 1}/{total_imgs} snímků ({pct} %) [{fps_speed:.1f} sn./s]", start_time))
+            if progress is not None:
+                try:
+                    progress(0.20 + 0.50 * ((idx + 1) / total_imgs), desc=f"[1c] MediaPipe extrakce: {idx + 1}/{total_imgs} ({pct}%)")
+                except Exception:
+                    pass
+    print(format_log("   [1c] MediaPipe extrakce dokončena", start_time))
+
     # Compute a median MediaPipe signing box to prevent coordinate jitter
     if len(x0) == 0:
         ih, iw = video[0].shape[:2]
@@ -507,6 +546,8 @@ def predict_pose(video: List[np.ndarray], models: tuple, sign_space=4, yolo_sign
         y1mp = max(y0mp + 1, min(ih, int(np.round(np.median(y1)))))
 
     # Step 3: Crop and extract final features (Loop 3)
+    t_crop = time.time()
+    print(format_log(f"   [1d] Příprava ořezů a bounding boxů ({total_imgs} snímků)...", start_time))
     for idx, (image, keypoints) in enumerate(zip(results["images"], mp_keypoints_list)):
         cropped_image, pad_bbox = crop_pad_image(image, (x0mp, y0mp, x1mp, y1mp), border=0)
 
@@ -551,5 +592,12 @@ def predict_pose(video: List[np.ndarray], models: tuple, sign_space=4, yolo_sign
         results["cropped_keypoints"].append(keypoints_cropped)
         results["sign_space"].append(pad_bbox)
     results["images"] = video
+
+    if progress is not None:
+        try:
+            progress(0.72, desc="[1d] Ořezy dokončeny")
+        except Exception:
+            pass
+    print(format_log("   [1d] Ořezy dokončeny", start_time))
 
     return results

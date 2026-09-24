@@ -35,14 +35,18 @@ os.environ["UNISIGN_WEIGHTS"] = model_path
 # Prepare base64-encoded logos for header badges from the 'logo' directory
 logo_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logo")
 
-fav_logo_path = os.path.join(logo_dir, "fav_logo.png")
+fav_logo_path = os.path.join(logo_dir, "FAV_english_RGB.png")
+if not os.path.exists(fav_logo_path):
+    fav_logo_path = os.path.join(logo_dir, "fav_logo.png")
 fav_logo_src = ""
 if os.path.exists(fav_logo_path):
     with open(fav_logo_path, "rb") as f:
         fav_b64 = base64.b64encode(f.read()).decode("utf-8")
         fav_logo_src = f"data:image/png;base64,{fav_b64}"
 
-zcu_logo_path = os.path.join(logo_dir, "zcu_logo.png")
+zcu_logo_path = os.path.join(logo_dir, "ZCU_logo_english_RGB.png")
+if not os.path.exists(zcu_logo_path):
+    zcu_logo_path = os.path.join(logo_dir, "zcu_logo.png")
 zcu_logo_src = ""
 if os.path.exists(zcu_logo_path):
     with open(zcu_logo_path, "rb") as f:
@@ -275,12 +279,12 @@ with gr.Blocks(title="Sign Language Translation", css=custom_css, theme=gr.theme
         spinner_html = """<div class="translation-content-box"><div class="loading-container"><div class="pulse-spinner"></div></div></div>"""
         return gr.update(visible=True), spinner_html, gr.update(visible=False), ""
 
-    def finish_translating(video_path):
+    def finish_translating(video_path, progress=gr.Progress()):
         if not video_path:
             err_html = """<div class="translation-content-box"><div style="color: #dba70e; font-weight: 600; font-size: 15px; text-align: center;">Please select or upload a video first.</div></div>"""
             return err_html, gr.update(visible=False), ""
         try:
-            trans_result, kp_video = process_video(video_path)
+            trans_result, kp_video = process_video(video_path, progress=progress)
         except Exception as e:
             err_html = f"""<div class="translation-content-box"><div style="color: #ff6b6b; font-weight: 600; font-size: 14px; text-align: center;">Error: {e}</div></div>"""
             return err_html, gr.update(visible=False), ""
