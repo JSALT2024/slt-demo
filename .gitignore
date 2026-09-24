@@ -2,7 +2,6 @@
 DELETE/
 Uni_Sign/unisign_model/*.pth
 *.pth
-requirements.txt
 
 # optional:
 #/golden_data

@@ -411,10 +411,15 @@ def predict_pose(video: List[np.ndarray], models: tuple, sign_space=4, yolo_sign
         x1.append(_x1)
         y1.append(_y1)
 
-    x0y = np.round(np.median(x0)).astype(int)
-    y0y = np.round(np.median(y0)).astype(int)
-    x1y = np.round(np.median(x1)).astype(int)
-    y1y = np.round(np.median(y1)).astype(int)
+    if len(x0) == 0:
+        ih, iw = results["images"][0].shape[:2]
+        x0y, y0y, x1y, y1y = 0, 0, iw, ih
+    else:
+        ih, iw = results["images"][0].shape[:2]
+        x0y = max(0, min(iw, int(np.round(np.median(x0)))))
+        y0y = max(0, min(ih, int(np.round(np.median(y0)))))
+        x1y = max(x0y + 1, min(iw, int(np.round(np.median(x1)))))
+        y1y = max(y0y + 1, min(ih, int(np.round(np.median(y1)))))
 
     # Step 2: Extract fine-grained landmarks using MediaPipe inside the YOLO crop region
     mp_keypoints_list = []
@@ -495,10 +500,11 @@ def predict_pose(video: List[np.ndarray], models: tuple, sign_space=4, yolo_sign
         x1mp = iw
         y1mp = ih
     else:
-        x0mp = np.round(np.median(x0)).astype(int)
-        y0mp = np.round(np.median(y0)).astype(int)
-        x1mp = np.round(np.median(x1)).astype(int)
-        y1mp = np.round(np.median(y1)).astype(int)
+        ih, iw = video[0].shape[:2]
+        x0mp = max(0, min(iw, int(np.round(np.median(x0)))))
+        y0mp = max(0, min(ih, int(np.round(np.median(y0)))))
+        x1mp = max(x0mp + 1, min(iw, int(np.round(np.median(x1)))))
+        y1mp = max(y0mp + 1, min(ih, int(np.round(np.median(y1)))))
 
     # Step 3: Crop and extract final features (Loop 3)
     for idx, (image, keypoints) in enumerate(zip(results["images"], mp_keypoints_list)):

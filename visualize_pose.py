@@ -9,12 +9,17 @@ Encodes the output as a high-definition H.264 MP4 video for browser playback.
 """
 
 import os
+import shutil
 import tempfile
 import time
 import subprocess
 import cv2
 import numpy as np
-import imageio_ffmpeg
+
+try:
+    import imageio_ffmpeg
+except ImportError:
+    imageio_ffmpeg = None
 
 # ==============================================================================
 # 1. LANDMARK SKELETON CONNECTIONS & FACIAL DETAIL INDICES
@@ -328,35 +333,72 @@ def render_keypoints_video(
         ts = int(time.time() * 1000)
         out_path = os.path.join(out_dir, f"keypoints_1080p_{ts}.mp4")
 
-        ffmpeg_bin = imageio_ffmpeg.get_ffmpeg_exe()
-        cmd = [
-            ffmpeg_bin, "-y",
-            "-f", "rawvideo",
-            "-vcodec", "rawvideo",
-            "-s", f"{out_w}x{out_h}",
-            "-pix_fmt", "rgb24",
-            "-r", str(fps),
-            "-i", "-",
-            "-c:v", "libx264",
-            "-preset", "fast",
-            "-crf", "18",         # Near lossless visual quality
-            "-pix_fmt", "yuv420p",
-            "-movflags", "+faststart",
-            out_path
-        ]
+        # Resolve ffmpeg binary (from imageio_ffmpeg, system PATH, or fallback)
+        ffmpeg_bin = None
+        if imageio_ffmpeg is not None:
+            try:
+                ffmpeg_bin = imageio_ffmpeg.get_ffmpeg_exe()
+            except Exception:
+                ffmpeg_bin = None
+        if not ffmpeg_bin:
+            ffmpeg_bin = shutil.which("ffmpeg")
 
-        proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        for frame, kps in zip(video_frames, keypoints_list):
-            drawn = draw_keypoints_frame(
-                frame=frame,
-                kps=kps,
-                target_width=out_w,
-                target_height=out_h,
-                **render_kwargs
-            )
-            proc.stdin.write(drawn.tobytes())
-        proc.stdin.close()
-        proc.wait()
+        use_ffmpeg = False
+        if ffmpeg_bin:
+            try:
+                test_proc = subprocess.run([ffmpeg_bin, "-version"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                if test_proc.returncode == 0:
+                    use_ffmpeg = True
+            except Exception:
+                use_ffmpeg = False
+
+        if use_ffmpeg:
+            cmd = [
+                ffmpeg_bin, "-y",
+                "-f", "rawvideo",
+                "-vcodec", "rawvideo",
+                "-s", f"{out_w}x{out_h}",
+                "-pix_fmt", "rgb24",
+                "-r", str(fps),
+                "-i", "-",
+                "-r", str(fps),
+                "-c:v", "libx264",
+                "-preset", "fast",
+                "-crf", "18",         # Near lossless visual quality
+                "-pix_fmt", "yuv420p",
+                "-movflags", "+faststart",
+                out_path
+            ]
+
+            proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            for frame, kps in zip(video_frames, keypoints_list):
+                drawn = draw_keypoints_frame(
+                    frame=frame,
+                    kps=kps,
+                    target_width=out_w,
+                    target_height=out_h,
+                    **render_kwargs
+                )
+                proc.stdin.write(drawn.tobytes())
+            proc.stdin.close()
+            proc.wait()
+        else:
+            # Fallback to OpenCV VideoWriter if ffmpeg is completely absent
+            fourcc = cv2.VideoWriter_fourcc(*'avc1')
+            writer = cv2.VideoWriter(out_path, fourcc, float(fps), (out_w, out_h))
+            if not writer.isOpened():
+                fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+                writer = cv2.VideoWriter(out_path, fourcc, float(fps), (out_w, out_h))
+            for frame, kps in zip(video_frames, keypoints_list):
+                drawn = draw_keypoints_frame(
+                    frame=frame,
+                    kps=kps,
+                    target_width=out_w,
+                    target_height=out_h,
+                    **render_kwargs
+                )
+                writer.write(cv2.cvtColor(drawn, cv2.COLOR_RGB2BGR))
+            writer.release()
 
         if os.path.exists(out_path) and os.path.getsize(out_path) > 0:
             print(f"Rendered crisp 1080p keypoints video: {out_w}x{out_h} at {out_path}")

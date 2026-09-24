@@ -35,6 +35,19 @@ def setup_ffmpeg():
         print(f"Warning setting up ffmpeg: {e}")
 
 
+def get_ffmpeg_bin():
+    """Resolves a working ffmpeg binary executable path."""
+    try:
+        import imageio_ffmpeg
+        return imageio_ffmpeg.get_ffmpeg_exe()
+    except Exception:
+        pass
+    bin_path = shutil.which("ffmpeg")
+    if bin_path:
+        return bin_path
+    return "ffmpeg"
+
+
 def patch_gradio_playable():
     """Patch Gradio's video_is_playable to prevent FFExecutableNotFoundError when ffprobe is not installed."""
     try:
@@ -105,8 +118,7 @@ def ensure_web_compatible_video(video_path):
 
     # Transcode to standard H.264 using ffmpeg
     try:
-        import imageio_ffmpeg
-        ffmpeg_bin = imageio_ffmpeg.get_ffmpeg_exe()
+        ffmpeg_bin = get_ffmpeg_bin()
         mtime = int(os.path.getmtime(path_str))
         clean_name = os.path.basename(path_str)
         import re
@@ -122,6 +134,7 @@ def ensure_web_compatible_video(video_path):
             cmd = [
                 ffmpeg_bin, "-y",
                 "-i", path_str,
+                "-r", "30",
                 "-c:v", "libx264",
                 "-preset", "veryfast",
                 "-crf", "22",
@@ -254,53 +267,6 @@ def open_modal_for_recording():
     return gr.update(visible=True), gr.update(value=None)
 
 
-def flip_video_horizontal(video_input):
-    """Flips the video horizontally (mirror effect) using FFmpeg hflip filter."""
-    global _is_recording_mode
-    path_str = extract_video_path(video_input)
-    if not path_str or not os.path.exists(path_str):
-        return video_input
-
-    try:
-        import imageio_ffmpeg
-        ffmpeg_bin = imageio_ffmpeg.get_ffmpeg_exe()
-        import time
-        ts = int(time.time() * 1000)
-
-        if _is_recording_mode or is_webcam_video(path_str):
-            clean_name = "webkamera.mp4"
-        else:
-            clean_name = os.path.basename(path_str)
-            import re
-            clean_name = re.sub(r'(_flipped(_\d+)?)', '', clean_name)
-            clean_name = re.sub(r'(_\d+_h264)', '', clean_name)
-
-        out_dir = os.path.join(tempfile.gettempdir(), "slt_flipped_videos", str(ts))
-        os.makedirs(out_dir, exist_ok=True)
-        out_path = os.path.join(out_dir, clean_name)
-
-        cmd = [
-            ffmpeg_bin, "-y",
-            "-i", path_str,
-            "-vf", "hflip",
-            "-c:v", "libx264",
-            "-preset", "veryfast",
-            "-crf", "22",
-            "-pix_fmt", "yuv420p",
-            "-movflags", "+faststart",
-            out_path
-        ]
-        res = subprocess.run(cmd, capture_output=True, text=True)
-        if res.returncode == 0 and os.path.exists(out_path) and os.path.getsize(out_path) > 0:
-            return out_path
-        else:
-            print(f"FFmpeg hflip warning: {res.stderr}")
-    except Exception as e:
-        print(f"Video flip error: {e}")
-
-    return video_input
-
-
 def close_modal_and_save(mod_vid, curr_vid):
     """Saves recorded or trimmed video from modal, transcoding to H.264 if needed."""
     global _is_recording_mode
@@ -317,11 +283,24 @@ def close_modal_and_save(mod_vid, curr_vid):
             out_dir = os.path.join(tempfile.gettempdir(), "slt_webcam_videos", str(int(time.time() * 1000)))
             os.makedirs(out_dir, exist_ok=True)
             webcam_path = os.path.join(out_dir, "webkamera.mp4")
+            ffmpeg_bin = get_ffmpeg_bin()
+            cmd = [
+                ffmpeg_bin, "-y",
+                "-i", target_path,
+                "-r", "30",
+                "-c:v", "libx264",
+                "-preset", "veryfast",
+                "-crf", "22",
+                "-pix_fmt", "yuv420p",
+                "-movflags", "+faststart",
+                webcam_path
+            ]
             try:
-                shutil.copyfile(target_path, webcam_path)
-                target_path = webcam_path
-            except Exception:
-                pass
+                subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                if os.path.exists(webcam_path) and os.path.getsize(webcam_path) > 0:
+                    target_path = webcam_path
+            except Exception as e:
+                print(f"Error transcoding webcam video: {e}")
 
         compat_path = ensure_web_compatible_video(target_path)
         display_name = format_video_display_name(compat_path, is_webcam=is_webcam)

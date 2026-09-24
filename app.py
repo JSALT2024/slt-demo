@@ -13,7 +13,6 @@ from handle_gradio import (
     open_modal_for_recording,
     close_modal_and_save,
     cancel_modal,
-    flip_video_horizontal,
     open_keypoints_modal,
     close_keypoints_modal,
 )
@@ -224,6 +223,13 @@ with gr.Blocks(title="Sign Language Translation", css=custom_css, theme=gr.theme
         with gr.Column(elem_classes=["ui-card"]):
             gr.Markdown("<h3 class='card-title'>Information</h3>")
             gr.Markdown(INFO_MARKDOWN, elem_classes=["info-markdown"])
+
+        # Subtle bottom-right restart session button
+        with gr.Row(elem_classes=["restart-row"]):
+            with gr.Column(scale=1):
+                pass
+            with gr.Column(scale=0, min_width=140):
+                restart_btn = gr.Button("🔄 Restart session", variant="secondary", elem_classes=["restart-btn"], size="sm")
             
     # Fullscreen Floating Modal Window for Video Preview & Trimming
     with gr.Column(elem_classes=["modal-overlay"], visible=False) as preview_modal:
@@ -243,7 +249,6 @@ with gr.Blocks(title="Sign Language Translation", css=custom_css, theme=gr.theme
             )
             
             with gr.Column(elem_classes=["modal-footer-col"]):
-                modal_flip_btn = gr.Button("⇄ Flip Horizontally (Mirror)", variant="secondary", elem_classes=["modal-flip-btn"])
                 modal_save_btn = gr.Button("✓ Save & Use Video", variant="primary", elem_classes=["modal-done-btn"])
 
     # Fullscreen Floating Modal Window for Keypoints Visualization
@@ -358,11 +363,12 @@ with gr.Blocks(title="Sign Language Translation", css=custom_css, theme=gr.theme
         outputs=[preview_modal, modal_video],
     )
 
-    # Flip / Mirror video horizontally
-    modal_flip_btn.click(
-        fn=flip_video_horizontal,
-        inputs=modal_video,
-        outputs=modal_video,
+    # Restart / Reset Session event
+    restart_btn.click(
+        fn=handle_remove_video,
+        inputs=None,
+        outputs=[current_video, upload_file, record_yourself_btn, video_info_row, video_name_md, submit_btn, translation_card, modal_video],
+        js="() => { window.location.href = window.location.href.split('#')[0]; }"
     )
 
     # Save & Use Video
@@ -412,4 +418,4 @@ with gr.Blocks(title="Sign Language Translation", css=custom_css, theme=gr.theme
 
 
 if __name__ == "__main__":
-    app.launch()
+    app.queue(default_concurrency_limit=1).launch()

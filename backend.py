@@ -141,6 +141,9 @@ def process_input(input_video_path):
         
         print(f"1. Extracting keypoints from video... [{time.time() - start_time:.2f} s since start]")
         video_frames, fps = load_video_cv(input_video_path)
+        if fps is None or fps <= 0 or np.isnan(fps):
+            fps = 25.0
+
         pose_results = predict_pose(video_frames, pose_models)
 
         # Attach bounding boxes to each frame's keypoints
