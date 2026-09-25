@@ -550,6 +550,10 @@ def predict_pose(video: List[np.ndarray], models: tuple, sign_space=4, yolo_sign
     print(format_log(f"   [1d] Příprava ořezů a bounding boxů ({total_imgs} snímků)...", start_time))
     for idx, (image, keypoints) in enumerate(zip(results["images"], mp_keypoints_list)):
         cropped_image, pad_bbox = crop_pad_image(image, (x0mp, y0mp, x1mp, y1mp), border=0)
+        # Match the 512x512 crop coordinates used by the training keypoints.
+        oh, ow = cropped_image.shape[:2]
+        cropped_image = cv2.resize(cropped_image, (512, 512))
+        nh, nw = cropped_image.shape[:2]
 
         # Generate Dino crops for hands and face regions
         name_to_keypoints = [
@@ -573,12 +577,14 @@ def predict_pose(video: List[np.ndarray], models: tuple, sign_space=4, yolo_sign
             results[f"bbox_{name}"].append(cropped_local_bbox)
             results[f"cropped_{name}"].append(cropped_local_image)
 
-        # Offset keypoints to final cropped coordinates
-        x_move = pad_bbox[0]
-        y_move = pad_bbox[1]
+        # Scale keypoints and crop offsets into the resized crop coordinates.
+        x_move = pad_bbox[0] * nw / ow
+        y_move = pad_bbox[1] * nh / oh
         keypoints_cropped = deepcopy(keypoints)
         for name in keypoints_cropped:
             if len(keypoints_cropped[name]) > 0:
+                keypoints_cropped[name][:, 0] *= nw / ow
+                keypoints_cropped[name][:, 1] *= nh / oh
                 keypoints_cropped[name][:, 0] -= x_move
                 keypoints_cropped[name][:, 1] -= y_move
                 
